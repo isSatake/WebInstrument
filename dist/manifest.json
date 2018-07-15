@@ -1,0 +1,21 @@
+{
+  "name": "WebInstrument",
+  "version": "0.0.0",
+  "description": "Web楽器",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://scrapbox.io/*"
+      ],
+      "js": [
+        "content.js"
+      ]
+    }
+  ],
+  "manifest_version": 2
+}

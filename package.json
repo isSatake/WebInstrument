@@ -1,0 +1,22 @@
+{
+  "name": "webinstrument",
+  "version": "1.0.0",
+  "description": "Web楽器",
+  "main": "index.js",
+  "scripts": {
+    "clean": "rm -rf dist/*",
+    "copy": "cp ./manifest.json ./dist",
+    "build": "npm run clean && npm run copy && tsc && npm run browserify",
+    "browserify": "browserify ./dist/content.js -o ./dist/content.js"
+  },
+  "author": "stkay <stkayy@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^10.5.2",
+    "browserify": "^16.2.2",
+    "typescript": "^2.9.2"
+  },
+  "dependencies": {
+    "webaudiofont": "^2.5.25"
+  }
+}
