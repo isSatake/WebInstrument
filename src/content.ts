@@ -1,9 +1,11 @@
 import * as WebAudioFontPlayer from "webaudiofont";
-import * as piano from "../lib/sound/0000_Aspirin_sf2_file";
+import {ins} from "./instrument";
 
 const ctx = new AudioContext();
 const player = new WebAudioFontPlayer();
-const tone = piano;
+const getPageTitle = () => decodeURI(location.pathname.split("/")[2]);
+let oldPageTitle: string;
+let tone = ins[getPageTitle()];
 
 console.log("Hello from WebInstrumentExtension");
 
@@ -46,6 +48,7 @@ const onMIDImessage = (event) => {
 const requestMIDIAccessFailure = (e) => {
     console.log('failed to requestMIDIAccess', e);
 };
+
 const requestMIDIAccessSuccess = (midi) => {
     console.log("succeeded to requestMIDIAccess");
     const inputs = midi.inputs.values();
@@ -56,5 +59,12 @@ const requestMIDIAccessSuccess = (midi) => {
     midi.onstatechange = onMIDIStateChange;
 };
 
-console.log("requestMIDIaccess");
-navigator.requestMIDIAccess().then(requestMIDIAccessSuccess, requestMIDIAccessFailure);
+//ページ遷移をハンドル
+setInterval(() => {
+    const pageTitle = getPageTitle();
+    if (oldPageTitle !== pageTitle) {
+        console.log("requestMIDIaccess");
+        navigator.requestMIDIAccess().then(requestMIDIAccessSuccess, requestMIDIAccessFailure);
+        oldPageTitle = pageTitle;
+    }
+}, 1000);
