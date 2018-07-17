@@ -65,6 +65,8 @@ setInterval(() => {
     if (oldPageTitle !== pageTitle) {
         console.log("requestMIDIaccess");
         navigator.requestMIDIAccess().then(requestMIDIAccessSuccess, requestMIDIAccessFailure);
+        tone = ins[pageTitle];
         oldPageTitle = pageTitle;
     }
+    midiNoteOn(60, 100);
 }, 1000);
