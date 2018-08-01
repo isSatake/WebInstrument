@@ -18,6 +18,6 @@
     "typescript": "^2.9.2"
   },
   "dependencies": {
-    "webaudiofont": "^2.5.25"
+    "axios": "^0.18.0"
   }
 }
