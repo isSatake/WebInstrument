@@ -129,7 +129,8 @@ const soundfontFromSoundURL = (dataUrl: string) => {
                 fineTune: 0,					//tune correction in cents
                 sampleRate: 44100,				//音声のサンプルレート ループでしか使ってないようなので適当でいい
                 ahdsr: false,					//adsrをいじるかどうか
-                delay: 0,                    //再生開始時間 とりあえずペンディング
+                delay: 0,                       //再生開始時間 とりあえずペンディング
+                release: 0.1,                   //ページ内で変更可能になる
                 file: dataUrl.split("data:audio/wav;base64,")[1]    //base64 APIで取れる？
             }
         ]

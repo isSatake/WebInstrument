@@ -74,7 +74,7 @@ export function WebAudioFontPlayer() {
         waveDuration = zone.buffer.duration / playbackRate;
       }
     }
-    var envelope = this.findEnvelope(audioContext, target, startWhen, waveDuration);
+    var envelope = this.findEnvelope(audioContext, target, startWhen, waveDuration, zone.release);
     this.setupEnvelope(audioContext, envelope, zone, volume, startWhen, waveDuration, duration);
     envelope.audioBufferSourceNode = audioContext.createBufferSource();
     envelope.audioBufferSourceNode.playbackRate.setValueAtTime(playbackRate, 0);
@@ -172,7 +172,7 @@ export function WebAudioFontPlayer() {
       return defValue;
     }
   };
-  this.findEnvelope = function (audioContext, target, when, duration) {
+  this.findEnvelope = function (audioContext, target, when, duration, releaseTime = 0.1) {
     var envelope = null;
     for (var i = 0; i < this.envelopes.length; i++) {
       var e = this.envelopes[i];
@@ -195,7 +195,8 @@ export function WebAudioFontPlayer() {
       envelope.cancel = function () {
         if (envelope.when + envelope.duration > audioContext.currentTime) {
           envelope.gain.cancelScheduledValues(0);
-          envelope.gain.setTargetAtTime(0.00001, audioContext.currentTime, 0); //ここもパラメタ化したい
+          envelope.gain.setTargetAtTime(0.00001, audioContext.currentTime, releaseTime); //ここもパラメタ化したい
+          //zoneのパラメタを参照できる？
           envelope.when = audioContext.currentTime + 0.00001;
           envelope.duration = 0;
         }
