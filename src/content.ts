@@ -26,14 +26,12 @@ const midiNoteOn = (pitch, velocity) => {
         envelope: envelope
     };
     midiNotes.push(note);
-    console.log(envelope)
 };
 
 const midiNoteOff = (pitch) => {
     for (let i = 0; i < midiNotes.length; i++) {
         if (midiNotes[i].pitch == pitch) {
             if (midiNotes[i].envelope) {
-                console.log(midiNotes[i].envelope);
                 midiNotes[i].envelope.cancel();
             }
             midiNotes.splice(i, 1);

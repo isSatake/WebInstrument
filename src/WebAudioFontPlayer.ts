@@ -19,7 +19,12 @@ export type Zone = {
     delay,
     release?: number,
     file?: string,
+    sample?: any,
     buffer?: any
+}
+
+type Preset = {
+    zones: Zone[]
 }
 
 export class WebAudioFontPlayer {
@@ -32,15 +37,6 @@ export class WebAudioFontPlayer {
     constructor() {
         return this;
     }
-
-    limitVolume = (volume): number => {
-        if (volume) {
-            volume = 1.0 * volume;
-        } else {
-            volume = 0.5;
-        }
-        return volume;
-    };
 
     // this.queueChord = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
     //   volume = this.limitVolume(volume);
@@ -77,14 +73,9 @@ export class WebAudioFontPlayer {
     //   this.queueChord(audioContext, target, preset, when, pitches, duration, volume, slides);
     // };
 
-    public queueWaveTable = (audioContext: AudioContext, target, preset, when, pitch, duration, volume, slides?) => {
-        if (audioContext.state === 'suspended') {
-            console.log('audioContext.resume');
-            audioContext.resume();
-        }
-
-        volume = this.limitVolume(volume);
-
+    //別にWebAudioFontPlayerのメンバにキューイングしてるわけではない
+    //どの音をどのように鳴らすか、というのを引数で受ける
+    public queueWaveTable = (audioContext: AudioContext, target, preset, when, pitch, duration, volume, slides?): Envelope => {
         const zone: Zone = this.findZone(audioContext, preset, pitch);
         if (!(zone.buffer)) {
             console.log('empty buffer ', zone);
@@ -110,11 +101,14 @@ export class WebAudioFontPlayer {
         }
 
         console.log(`WebAudioFontPlayer.js: queueWaveTable() releaseTime: ${zone.release}`);
+        //envelopeは音量変化を定義するもの
         const envelope = this.findEnvelope(audioContext, target, startWhen, waveDuration, zone.release);
+        //純粋な関数にできねーかな
         this.setupEnvelope(audioContext, envelope, zone, volume, startWhen, waveDuration, duration);
         envelope.audioBufferSourceNode = audioContext.createBufferSource();
         envelope.audioBufferSourceNode.playbackRate.setValueAtTime(playbackRate, 0);
 
+        //slidesって何
         if (slides) {
             if (slides.length > 0) {
                 envelope.audioBufferSourceNode.playbackRate.setValueAtTime(playbackRate, when);
@@ -126,6 +120,9 @@ export class WebAudioFontPlayer {
             }
         }
 
+        //envelopeの実体はGainNode
+        //GainNodeも音量変化を定義するもの
+        //ここで鳴らしたい音と鳴らし方をenvelopeに教え込んでいる
         envelope.audioBufferSourceNode.buffer = zone.buffer;
         if (loop) {
             envelope.audioBufferSourceNode.loop = true;
@@ -135,6 +132,7 @@ export class WebAudioFontPlayer {
             envelope.audioBufferSourceNode.loop = false;
         }
 
+        //ここで鳴らす
         envelope.audioBufferSourceNode.connect(envelope);
         envelope.audioBufferSourceNode.start(startWhen, zone.delay);
         envelope.audioBufferSourceNode.stop(startWhen + waveDuration);
@@ -142,7 +140,7 @@ export class WebAudioFontPlayer {
         envelope.duration = waveDuration;
         envelope.pitch = pitch;
         envelope.preset = preset;
-        return envelope;
+        return envelope; //envelopeを返す
     };
 
     noZeroVolume = (n): number => {
@@ -207,14 +205,6 @@ export class WebAudioFontPlayer {
         envelope.gain.linearRampToValueAtTime(this.noZeroVolume(0), when + duration + this.afterTime);
     };
 
-    numValue = (aValue: any, defValue: number): number => {
-        if (typeof aValue === "number") {
-            return aValue;
-        } else {
-            return defValue;
-        }
-    };
-
     findEnvelope = (audioContext, target, when, duration, releaseTime = 0.1): Envelope => {
         console.log(`WebAudioFontPlayer.js: findEnvelope() releaseTime: ${releaseTime}`);
         let envelope: Envelope = null;
@@ -238,6 +228,8 @@ export class WebAudioFontPlayer {
             envelope.connect(target);
             envelope.cancel = () => {
                 if (envelope.when + envelope.duration > audioContext.currentTime) {
+                    //最初の楽器のreleaseTimeを継承してしまう
+                    //もしかしてWebAudioFontPlayerに保存されている？
                     console.log(`WebAudioFontPlayer.js: cancel() releaseTime: ${releaseTime}`);
                     envelope.gain.cancelScheduledValues(0);
                     envelope.gain.setTargetAtTime(0.00001, audioContext.currentTime, releaseTime);
@@ -257,59 +249,54 @@ export class WebAudioFontPlayer {
     };
 
     //鳴らしたい音の"zone"を生成
-    adjustZone = (audioContext, zone) => {
+    adjustZone = (audioContext: AudioContext, zone: Zone): Zone => {
         if (zone.buffer) {
-            //
-        } else {
-            // zone.delay = 0;
-            if (zone.sample) {
-                const decoded = atob(zone.sample);
-                zone.buffer = audioContext.createBuffer(1, decoded.length / 2, zone.sampleRate);
-                const float32Array = zone.buffer.getChannelData(0);
-                let b1, b2, n;
-                for (let i = 0; i < decoded.length / 2; i++) {
-                    b1 = decoded.charCodeAt(i * 2);
-                    b2 = decoded.charCodeAt(i * 2 + 1);
-                    if (b1 < 0) {
-                        b1 = 256 + b1;
-                    }
-                    if (b2 < 0) {
-                        b2 = 256 + b2;
-                    }
-                    n = b2 * 256 + b1;
-                    if (n >= 65536 / 2) {
-                        n = n - 65536;
-                    }
-                    float32Array[i] = n / 65536.0;
+            return zone;
+        }
+        // zone.delay = 0;
+        if (zone.sample) {
+            const decoded = atob(zone.sample);
+            zone.buffer = audioContext.createBuffer(1, decoded.length / 2, zone.sampleRate);
+            const float32Array = zone.buffer.getChannelData(0);
+            let b1, b2, n;
+            for (let i = 0; i < decoded.length / 2; i++) {
+                b1 = decoded.charCodeAt(i * 2);
+                b2 = decoded.charCodeAt(i * 2 + 1);
+                if (b1 < 0) {
+                    b1 = 256 + b1;
                 }
-            } else {
-                if (zone.file) {
-                    const datalen = zone.file.length;
-                    const arraybuffer = new ArrayBuffer(datalen);
-                    const view = new Uint8Array(arraybuffer);
-                    const decoded = atob(zone.file);
-                    let b;
-                    for (let i = 0; i < decoded.length; i++) {
-                        b = decoded.charCodeAt(i);
-                        view[i] = b;
-                    }
-                    audioContext.decodeAudioData(arraybuffer, function (audioBuffer) {
-                        zone.buffer = audioBuffer;
-                    });
+                if (b2 < 0) {
+                    b2 = 256 + b2;
                 }
+                n = b2 * 256 + b1;
+                if (n >= 65536 / 2) {
+                    n = n - 65536;
+                }
+                float32Array[i] = n / 65536.0;
             }
-            zone.loopStart = this.numValue(zone.loopStart, 0);
-            zone.loopEnd = this.numValue(zone.loopEnd, 0);
-            zone.coarseTune = this.numValue(zone.coarseTune, 0);
-            zone.fineTune = this.numValue(zone.fineTune, 0);
-            zone.originalPitch = this.numValue(zone.originalPitch, 6000);
-            zone.sampleRate = this.numValue(zone.sampleRate, 44100);
-            zone.sustain = this.numValue(zone.originalPitch, 0);
+            return zone;
+        }
+
+        if (zone.file) {
+            const datalen = zone.file.length;
+            const arraybuffer = new ArrayBuffer(datalen);
+            const view = new Uint8Array(arraybuffer);
+            const decoded = atob(zone.file);
+            let b;
+            for (let i = 0; i < decoded.length; i++) {
+                b = decoded.charCodeAt(i);
+                view[i] = b;
+            }
+            audioContext.decodeAudioData(arraybuffer, function (audioBuffer) {
+                zone.buffer = audioBuffer;
+            });
+            return zone;
         }
     };
 
+
     //鳴らしたい高さの音を探す
-    findZone = (audioContext, preset, pitch): Zone => {
+    findZone = (audioContext: AudioContext, preset: Preset, pitch): Zone => {
         let zone = null;
         for (let i = preset.zones.length - 1; i >= 0; i--) {
             zone = preset.zones[i];
@@ -325,21 +312,18 @@ export class WebAudioFontPlayer {
         return zone;
     };
 
-    // this.cancelQueue = function (audioContext) {
-    //   for (var i = 0; i < this.envelopes.length; i++) {
-    //     var e = this.envelopes[i];
-    //     e.gain.cancelScheduledValues(0);
-    //     console.log(`WebAudioFontPlayer.js: cancelQueue()`)
-    //     e.gain.setValueAtTime(this.nearZero, audioContext.currentTime);
-    //     e.when = -1;
-    //     try {
-    //       e.audioBufferSourceNode.disconnect();
-    //     } catch (ex) {
-    //       console.log(ex);
-    //     }
-    //   }
-    // };
-
-    return
-    this;
-};
+// this.cancelQueue = function (audioContext) {
+//   for (var i = 0; i < this.envelopes.length; i++) {
+//     var e = this.envelopes[i];
+//     e.gain.cancelScheduledValues(0);
+//     console.log(`WebAudioFontPlayer.js: cancelQueue()`)
+//     e.gain.setValueAtTime(this.nearZero, audioContext.currentTime);
+//     e.when = -1;
+//     try {
+//       e.audioBufferSourceNode.disconnect();
+//     } catch (ex) {
+//       console.log(ex);
+//     }
+//   }
+// };
+}
