@@ -1,10 +1,15 @@
-import {WebAudioFontPlayer} from "./WebAudioFontPlayer";
+import {Envelope, WebAudioFontPlayer} from "./WebAudioFontPlayer";
 import axios from "axios";
 
+type Note = {
+    pitch: number,
+    envelope: Envelope
+}
+
 const ctx = new AudioContext();
-const player = WebAudioFontPlayer();
+const player = new WebAudioFontPlayer();
 const instruments = [];
-const midiNotes = [];
+const midiNotes: Note[] = [];
 const getPageTitle = () => decodeURI(location.pathname.split("/")[2]);
 let oldPageTitle: string;
 let tone = instruments[getPageTitle()];
@@ -16,17 +21,19 @@ const midiNoteOn = (pitch, velocity) => {
     console.log("tone", tone);
     midiNoteOff(pitch);
     const envelope = player.queueWaveTable(ctx, ctx.destination, tone, 0, pitch, 123456789, velocity / 100);
-    const note = {
+    const note: Note = {
         pitch: pitch,
         envelope: envelope
     };
     midiNotes.push(note);
+    console.log(envelope)
 };
 
 const midiNoteOff = (pitch) => {
     for (let i = 0; i < midiNotes.length; i++) {
         if (midiNotes[i].pitch == pitch) {
             if (midiNotes[i].envelope) {
+                console.log(midiNotes[i].envelope);
                 midiNotes[i].envelope.cancel();
             }
             midiNotes.splice(i, 1);
@@ -73,30 +80,28 @@ const requestMIDIAccessSuccess = (midi) => {
     midi.onstatechange = onMIDIStateChange;
 };
 
-const getSoundfontURL = async (pageTitle: string) => {
+const getPageData = async (pageTitle: string) => {
     const res = await fetch(`https://scrapbox.io/api/pages/scrapbox-instrument/${pageTitle}`); //axios
     const {lines} = await res.json();
-    for (let line of lines) {
-        const matched = line.text.match(/https\:\/\/stkay.github.io\/webaudiofontdata\/sound\/.*\.json/);
-        if (matched) {
-            return matched[0]
-        }
-    }
-    for (let line of lines) {
-        const matched = line.text.match(/http.*\.(wav|mp3)/);
-        if (matched) {
-            return matched[0]
-        }
-    }
-    return ""
+    return lines;
 };
 
-const getTone = async (url: string): Promise<object> => {
-    if (url.match(/http.*\.(wav|mp3)/)) {
-        return soundfontFromSoundURL(await getDataUrlFromSoundURL(url));
+const generateTone = async (pageData: PageData) => {
+    console.log(pageData);
+    const {soundUrl, fontUrl, release} = pageData;
+    let font;
+    if (fontUrl !== undefined) {
+        const res = await fetch(fontUrl);
+        font = await res.json();
+    } else if (soundUrl !== undefined) {
+        font = soundfontFromSoundURL(await getDataUrlFromSoundURL(soundUrl));
     }
-    const res = await fetch(url); //axios
-    return await res.json();
+    if (release !== undefined) {
+        for(let zone of font.zones){
+            zone.release = release; //楽器変更しても継承されちゃう
+        }
+    }
+    return font
 };
 
 const getDataUrlFromSoundURL = (url: string): Promise<string> => {
@@ -137,16 +142,50 @@ const soundfontFromSoundURL = (dataUrl: string) => {
     }
 };
 
+type PageData = {
+    soundUrl?: string,
+    fontUrl?: string,
+    release?: number,
+    pitchHogeHoge?: boolean
+}
+
+const matcher = (lines: { text: string }[], regExp: RegExp): string | undefined => {
+    for (let line of lines) {
+        const matched = line.text.match(regExp);
+        if (matched) {
+            return matched[0]
+        }
+    }
+    return undefined
+};
+
+const parsePage = (lines: { text: string }[]): PageData => {
+    const getfontUrl = () => matcher(lines, /https\:\/\/stkay.github.io\/webaudiofontdata\/sound\/.*\.json/);
+    const getSoundUrl = () => matcher(lines, /http.*\.(wav|mp3)/);
+    const getReleaseTime = () => {
+        const matched = matcher(lines, /release:\d+(?:\.\d+)?/);
+        if (matched) {
+            const str = matched.split("release:")[1];
+            if (str) {
+                return Number(str)
+            }
+        }
+        return undefined
+    };
+    let data: PageData = {};
+    data.fontUrl = getfontUrl();
+    data.soundUrl = getSoundUrl();
+    data.release = getReleaseTime();
+    return data
+};
+
 //ページ遷移をハンドル
 setInterval(async () => {
     const pageTitle = getPageTitle();
     if (pageTitle && oldPageTitle !== pageTitle) {
         console.log("change instrument");
-        if (!instruments[pageTitle]) {
-            //wavなら
-
-            instruments[pageTitle] = await getTone(await getSoundfontURL(pageTitle));
-        }
+        //wavなら
+        instruments[pageTitle] = await generateTone(parsePage(await getPageData(pageTitle)));
         tone = instruments[pageTitle];
         oldPageTitle = pageTitle;
     }

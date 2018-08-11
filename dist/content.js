@@ -1,308 +1,299 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-function WebAudioFontPlayer() {
-    this.envelopes = [];
-    this.onCacheFinish = null;
-    this.onCacheProgress = null;
-    this.afterTime = 0.05;
-    this.nearZero = 0.000001;
-    this.limitVolume = function (volume) {
-        if (volume) {
-            volume = 1.0 * volume;
-        }
-        else {
-            volume = 0.5;
-        }
-        return volume;
-    };
-    this.queueChord = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
-        volume = this.limitVolume(volume);
-        for (var i = 0; i < pitches.length; i++) {
-            this.queueWaveTable(audioContext, target, preset, when, pitches[i], duration, volume - Math.random() * 0.01, slides);
-        }
-    };
-    this.queueStrumUp = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
-        pitches.sort(function (a, b) {
-            return b - a;
-        });
-        this.queueStrum(audioContext, target, preset, when, pitches, duration, volume, slides);
-    };
-    this.queueStrumDown = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
-        pitches.sort(function (a, b) {
-            return a - b;
-        });
-        this.queueStrum(audioContext, target, preset, when, pitches, duration, volume, slides);
-    };
-    this.queueStrum = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
-        volume = this.limitVolume(volume);
-        if (when < audioContext.currentTime) {
-            when = audioContext.currentTime;
-        }
-        for (var i = 0; i < pitches.length; i++) {
-            this.queueWaveTable(audioContext, target, preset, when + i * 0.01, pitches[i], duration, volume - Math.random() * 0.01, slides);
-            volume = 0.9 * volume;
-        }
-    };
-    this.queueSnap = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
-        volume = this.limitVolume(volume);
-        volume = 1.5 * (volume || 1.0);
-        z;
-        duration = 0.05;
-        this.queueChord(audioContext, target, preset, when, pitches, duration, volume, slides);
-    };
-    this.queueWaveTable = function (audioContext, target, preset, when, pitch, duration, volume, slides) {
-        if (audioContext.state == 'suspended') {
-            console.log('audioContext.resume');
-            audioContext.resume();
-        }
-        volume = this.limitVolume(volume);
-        var zone = this.findZone(audioContext, preset, pitch);
-        if (!(zone.buffer)) {
-            console.log('empty buffer ', zone);
-            return;
-        }
-        var baseDetune = zone.originalPitch - 100.0 * zone.coarseTune - zone.fineTune;
-        var playbackRate = 1.0 * Math.pow(2, (100.0 * pitch - baseDetune) / 1200.0);
-        var sampleRatio = zone.sampleRate / audioContext.sampleRate;
-        var startWhen = when;
-        if (startWhen < audioContext.currentTime) {
-            startWhen = audioContext.currentTime;
-        }
-        var waveDuration = duration + this.afterTime;
-        var loop = true;
-        if (zone.loopStart < 1 || zone.loopStart >= zone.loopEnd) {
-            loop = false;
-        }
-        if (!loop) {
-            if (waveDuration > zone.buffer.duration / playbackRate) {
-                waveDuration = zone.buffer.duration / playbackRate;
+class WebAudioFontPlayer {
+    constructor() {
+        this.envelopes = [];
+        this.onCacheFinish = null;
+        this.onCacheProgress = null;
+        this.afterTime = 0.05;
+        this.nearZero = 0.000001;
+        this.limitVolume = (volume) => {
+            if (volume) {
+                volume = 1.0 * volume;
             }
-        }
-        var envelope = this.findEnvelope(audioContext, target, startWhen, waveDuration, zone.release);
-        this.setupEnvelope(audioContext, envelope, zone, volume, startWhen, waveDuration, duration);
-        envelope.audioBufferSourceNode = audioContext.createBufferSource();
-        envelope.audioBufferSourceNode.playbackRate.setValueAtTime(playbackRate, 0);
-        if (slides) {
-            if (slides.length > 0) {
-                envelope.audioBufferSourceNode.playbackRate.setValueAtTime(playbackRate, when);
-                for (var i = 0; i < slides.length; i++) {
-                    var newPlaybackRate = 1.0 * Math.pow(2, (100.0 * slides[i].pitch - baseDetune) / 1200.0);
-                    var newWhen = when + slides[i].when;
-                    envelope.audioBufferSourceNode.playbackRate.linearRampToValueAtTime(newPlaybackRate, newWhen);
+            else {
+                volume = 0.5;
+            }
+            return volume;
+        };
+        // this.queueChord = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
+        //   volume = this.limitVolume(volume);
+        //   for (var i = 0; i < pitches.length; i++) {
+        //     this.queueWaveTable(audioContext, target, preset, when, pitches[i], duration, volume - Math.random() * 0.01, slides);
+        //   }
+        // };
+        // this.queueStrumUp = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
+        //   pitches.sort(function (a, b) {
+        //     return b - a;
+        //   });
+        //   this.queueStrum(audioContext, target, preset, when, pitches, duration, volume, slides);
+        // };
+        // this.queueStrumDown = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
+        //   pitches.sort(function (a, b) {
+        //     return a - b;
+        //   });
+        //   this.queueStrum(audioContext, target, preset, when, pitches, duration, volume, slides);
+        // };
+        // this.queueStrum = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
+        //   volume = this.limitVolume(volume);
+        //   if (when < audioContext.currentTime) {
+        //     when = audioContext.currentTime;
+        //   }
+        //   for (var i = 0; i < pitches.length; i++) {
+        //     this.queueWaveTable(audioContext, target, preset, when + i * 0.01, pitches[i], duration, volume - Math.random() * 0.01, slides);
+        //     volume = 0.9 * volume;
+        //   }
+        // };
+        // this.queueSnap = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
+        //   volume = this.limitVolume(volume);
+        //   volume = 1.5 * (volume || 1.0);z
+        //   duration = 0.05;
+        //   this.queueChord(audioContext, target, preset, when, pitches, duration, volume, slides);
+        // };
+        this.queueWaveTable = (audioContext, target, preset, when, pitch, duration, volume, slides) => {
+            if (audioContext.state === 'suspended') {
+                console.log('audioContext.resume');
+                audioContext.resume();
+            }
+            volume = this.limitVolume(volume);
+            const zone = this.findZone(audioContext, preset, pitch);
+            if (!(zone.buffer)) {
+                console.log('empty buffer ', zone);
+                return;
+            }
+            const baseDetune = zone.originalPitch - 100.0 * zone.coarseTune - zone.fineTune;
+            const playbackRate = Math.pow(2, (100.0 * pitch - baseDetune) / 1200.0);
+            const sampleRatio = zone.sampleRate / audioContext.sampleRate;
+            let startWhen = when;
+            if (startWhen < audioContext.currentTime) {
+                startWhen = audioContext.currentTime;
+            }
+            let waveDuration = duration + this.afterTime;
+            let loop = true;
+            if (zone.loopStart < 1 || zone.loopStart >= zone.loopEnd) {
+                loop = false;
+            }
+            if (!loop) {
+                if (waveDuration > zone.buffer.duration / playbackRate) {
+                    waveDuration = zone.buffer.duration / playbackRate;
                 }
             }
-        }
-        envelope.audioBufferSourceNode.buffer = zone.buffer;
-        if (loop) {
-            envelope.audioBufferSourceNode.loop = true;
-            envelope.audioBufferSourceNode.loopStart = zone.loopStart / zone.sampleRate;
-            envelope.audioBufferSourceNode.loopEnd = zone.loopEnd / zone.sampleRate;
-        }
-        else {
-            envelope.audioBufferSourceNode.loop = false;
-        }
-        envelope.audioBufferSourceNode.connect(envelope);
-        envelope.audioBufferSourceNode.start(startWhen, zone.delay);
-        envelope.audioBufferSourceNode.stop(startWhen + waveDuration);
-        envelope.when = startWhen;
-        envelope.duration = waveDuration;
-        envelope.pitch = pitch;
-        envelope.preset = preset;
-        return envelope;
-    };
-    this.noZeroVolume = function (n) {
-        if (n > this.nearZero) {
-            return n;
-        }
-        else {
-            return this.nearZero;
-        }
-    };
-    this.setupEnvelope = function (audioContext, envelope, zone, volume, when, sampleDuration, noteDuration) {
-        envelope.gain.setValueAtTime(this.noZeroVolume(0), audioContext.currentTime);
-        var lastTime = 0;
-        var lastVolume = 0;
-        var duration = noteDuration;
-        var ahdsr = zone.ahdsr;
-        if (sampleDuration < duration + this.afterTime) {
-            duration = sampleDuration - this.afterTime;
-        }
-        if (ahdsr) {
-            if (!(ahdsr.length > 0)) {
+            console.log(`WebAudioFontPlayer.js: queueWaveTable() releaseTime: ${zone.release}`);
+            const envelope = this.findEnvelope(audioContext, target, startWhen, waveDuration, zone.release);
+            this.setupEnvelope(audioContext, envelope, zone, volume, startWhen, waveDuration, duration);
+            envelope.audioBufferSourceNode = audioContext.createBufferSource();
+            envelope.audioBufferSourceNode.playbackRate.setValueAtTime(playbackRate, 0);
+            if (slides) {
+                if (slides.length > 0) {
+                    envelope.audioBufferSourceNode.playbackRate.setValueAtTime(playbackRate, when);
+                    for (let i = 0; i < slides.length; i++) {
+                        const newPlaybackRate = Math.pow(2, (100.0 * slides[i].pitch - baseDetune) / 1200.0);
+                        const newWhen = when + slides[i].when;
+                        envelope.audioBufferSourceNode.playbackRate.linearRampToValueAtTime(newPlaybackRate, newWhen);
+                    }
+                }
+            }
+            envelope.audioBufferSourceNode.buffer = zone.buffer;
+            if (loop) {
+                envelope.audioBufferSourceNode.loop = true;
+                envelope.audioBufferSourceNode.loopStart = zone.loopStart / zone.sampleRate;
+                envelope.audioBufferSourceNode.loopEnd = zone.loopEnd / zone.sampleRate;
+            }
+            else {
+                envelope.audioBufferSourceNode.loop = false;
+            }
+            envelope.audioBufferSourceNode.connect(envelope);
+            envelope.audioBufferSourceNode.start(startWhen, zone.delay);
+            envelope.audioBufferSourceNode.stop(startWhen + waveDuration);
+            envelope.when = startWhen;
+            envelope.duration = waveDuration;
+            envelope.pitch = pitch;
+            envelope.preset = preset;
+            return envelope;
+        };
+        this.noZeroVolume = (n) => {
+            if (n > this.nearZero) {
+                return n;
+            }
+            else {
+                return this.nearZero;
+            }
+        };
+        this.setupEnvelope = (audioContext, envelope, zone, volume, when, sampleDuration, noteDuration) => {
+            envelope.gain.setValueAtTime(this.noZeroVolume(0), audioContext.currentTime);
+            let lastTime = 0;
+            let lastVolume = 0;
+            let duration = noteDuration;
+            let ahdsr = zone.ahdsr;
+            if (sampleDuration < duration + this.afterTime) {
+                duration = sampleDuration - this.afterTime;
+            }
+            if (ahdsr) {
+                if (!(ahdsr.length > 0)) {
+                    ahdsr = [{
+                            duration: 0,
+                            volume: 1
+                        }, {
+                            duration: 0.5,
+                            volume: 1
+                        }, {
+                            duration: 1.5,
+                            volume: 0.5
+                        }, {
+                            duration: 3,
+                            volume: 0
+                        }
+                    ];
+                }
+            }
+            else {
                 ahdsr = [{
                         duration: 0,
                         volume: 1
                     }, {
-                        duration: 0.5,
+                        duration: duration,
                         volume: 1
-                    }, {
-                        duration: 1.5,
-                        volume: 0.5
-                    }, {
-                        duration: 3,
-                        volume: 0
                     }
                 ];
             }
-        }
-        else {
-            ahdsr = [{
-                    duration: 0,
-                    volume: 1
-                }, {
-                    duration: duration,
-                    volume: 1
+            envelope.gain.cancelScheduledValues(when);
+            envelope.gain.setValueAtTime(this.noZeroVolume(ahdsr[0].volume * volume), when);
+            for (let i = 0; i < ahdsr.length; i++) {
+                if (ahdsr[i].duration > 0) {
+                    if (ahdsr[i].duration + lastTime > duration) {
+                        const r = 1 - (ahdsr[i].duration + lastTime - duration) / ahdsr[i].duration;
+                        const n = lastVolume - r * (lastVolume - ahdsr[i].volume);
+                        envelope.gain.linearRampToValueAtTime(this.noZeroVolume(volume * n), when + duration);
+                        break;
+                    }
+                    lastTime = lastTime + ahdsr[i].duration;
+                    lastVolume = ahdsr[i].volume;
+                    envelope.gain.linearRampToValueAtTime(this.noZeroVolume(volume * lastVolume), when + lastTime);
                 }
-            ];
-        }
-        envelope.gain.cancelScheduledValues(when);
-        envelope.gain.setValueAtTime(this.noZeroVolume(ahdsr[0].volume * volume), when);
-        for (var i = 0; i < ahdsr.length; i++) {
-            if (ahdsr[i].duration > 0) {
-                if (ahdsr[i].duration + lastTime > duration) {
-                    var r = 1 - (ahdsr[i].duration + lastTime - duration) / ahdsr[i].duration;
-                    var n = lastVolume - r * (lastVolume - ahdsr[i].volume);
-                    envelope.gain.linearRampToValueAtTime(this.noZeroVolume(volume * n), when + duration);
-                    break;
-                }
-                lastTime = lastTime + ahdsr[i].duration;
-                lastVolume = ahdsr[i].volume;
-                envelope.gain.linearRampToValueAtTime(this.noZeroVolume(volume * lastVolume), when + lastTime);
             }
-        }
-        envelope.gain.linearRampToValueAtTime(this.noZeroVolume(0), when + duration + this.afterTime);
-    };
-    this.numValue = function (aValue, defValue) {
-        if (typeof aValue === "number") {
-            return aValue;
-        }
-        else {
-            return defValue;
-        }
-    };
-    this.findEnvelope = function (audioContext, target, when, duration, releaseTime = 0.1) {
-        var envelope = null;
-        for (var i = 0; i < this.envelopes.length; i++) {
-            var e = this.envelopes[i];
-            if (e.target == target && audioContext.currentTime > e.when + e.duration + 0.001) {
-                try {
-                    e.audioBufferSourceNode.disconnect();
-                    e.audioBufferSourceNode.stop(0);
-                    e.audioBufferSourceNode = null;
-                }
-                catch (x) {
-                    //audioBufferSourceNode is dead already
-                }
-                envelope = e;
-                break;
-            }
-        }
-        if (!(envelope)) {
-            envelope = audioContext.createGain();
-            envelope.target = target;
-            envelope.connect(target);
-            envelope.cancel = function () {
-                if (envelope.when + envelope.duration > audioContext.currentTime) {
-                    envelope.gain.cancelScheduledValues(0);
-                    envelope.gain.setTargetAtTime(0.00001, audioContext.currentTime, releaseTime); //ここもパラメタ化したい
-                    //zoneのパラメタを参照できる？
-                    envelope.when = audioContext.currentTime + 0.00001;
-                    envelope.duration = 0;
-                }
-            };
-            this.envelopes.push(envelope);
-        }
-        return envelope;
-    };
-    this.adjustPreset = function (audioContext, preset) {
-        for (var i = 0; i < preset.zones.length; i++) {
-            this.adjustZone(audioContext, preset.zones[i]);
-        }
-    };
-    this.adjustZone = function (audioContext, zone) {
-        if (zone.buffer) {
-            //
-        }
-        else {
-            // zone.delay = 0;
-            if (zone.sample) {
-                var decoded = atob(zone.sample);
-                zone.buffer = audioContext.createBuffer(1, decoded.length / 2, zone.sampleRate);
-                var float32Array = zone.buffer.getChannelData(0);
-                var b1, b2, n;
-                for (var i = 0; i < decoded.length / 2; i++) {
-                    b1 = decoded.charCodeAt(i * 2);
-                    b2 = decoded.charCodeAt(i * 2 + 1);
-                    if (b1 < 0) {
-                        b1 = 256 + b1;
-                    }
-                    if (b2 < 0) {
-                        b2 = 256 + b2;
-                    }
-                    n = b2 * 256 + b1;
-                    if (n >= 65536 / 2) {
-                        n = n - 65536;
-                    }
-                    float32Array[i] = n / 65536.0;
-                }
+            envelope.gain.linearRampToValueAtTime(this.noZeroVolume(0), when + duration + this.afterTime);
+        };
+        this.numValue = (aValue, defValue) => {
+            if (typeof aValue === "number") {
+                return aValue;
             }
             else {
-                if (zone.file) {
-                    var datalen = zone.file.length;
-                    var arraybuffer = new ArrayBuffer(datalen);
-                    var view = new Uint8Array(arraybuffer);
-                    var decoded = atob(zone.file);
-                    var b;
-                    for (var i = 0; i < decoded.length; i++) {
-                        b = decoded.charCodeAt(i);
-                        view[i] = b;
+                return defValue;
+            }
+        };
+        //WebAudioAPIで規定されているオブジェクトにオレオレプロパティをどんどん生やしていてツラい
+        this.findEnvelope = (audioContext, target, when, duration, releaseTime = 0.1) => {
+            console.log(`WebAudioFontPlayer.js: findEnvelope() releaseTime: ${releaseTime}`);
+            let envelope = null;
+            for (let e of this.envelopes) {
+                if (e.target == target && audioContext.currentTime > e.when + e.duration + 0.001) {
+                    try {
+                        e.audioBufferSourceNode.disconnect();
+                        e.audioBufferSourceNode.stop(0);
+                        e.audioBufferSourceNode = null;
                     }
-                    audioContext.decodeAudioData(arraybuffer, function (audioBuffer) {
-                        zone.buffer = audioBuffer;
-                    });
+                    catch (x) {
+                        //audioBufferSourceNode is dead already
+                    }
+                    envelope = e;
+                    break;
                 }
             }
-            zone.loopStart = this.numValue(zone.loopStart, 0);
-            zone.loopEnd = this.numValue(zone.loopEnd, 0);
-            zone.coarseTune = this.numValue(zone.coarseTune, 0);
-            zone.fineTune = this.numValue(zone.fineTune, 0);
-            zone.originalPitch = this.numValue(zone.originalPitch, 6000);
-            zone.sampleRate = this.numValue(zone.sampleRate, 44100);
-            zone.sustain = this.numValue(zone.originalPitch, 0);
-        }
-    };
-    this.findZone = function (audioContext, preset, pitch) {
-        var zone = null;
-        for (var i = preset.zones.length - 1; i >= 0; i--) {
-            zone = preset.zones[i];
-            if (zone.keyRangeLow <= pitch && zone.keyRangeHigh + 1 >= pitch) {
-                break;
+            if (!(envelope)) {
+                envelope = audioContext.createGain();
+                envelope.target = target;
+                envelope.connect(target);
+                envelope.cancel = () => {
+                    if (envelope.when + envelope.duration > audioContext.currentTime) {
+                        console.log(`WebAudioFontPlayer.js: cancel() releaseTime: ${releaseTime}`);
+                        envelope.gain.cancelScheduledValues(0);
+                        envelope.gain.setTargetAtTime(0.00001, audioContext.currentTime, releaseTime);
+                        envelope.when = audioContext.currentTime + 0.00001;
+                        envelope.duration = 0;
+                    }
+                };
+                this.envelopes.push(envelope);
             }
-        }
-        try {
-            this.adjustZone(audioContext, zone);
-        }
-        catch (ex) {
-            console.log('adjustZone', ex);
-        }
-        return zone;
-    };
-    this.cancelQueue = function (audioContext) {
-        for (var i = 0; i < this.envelopes.length; i++) {
-            var e = this.envelopes[i];
-            e.gain.cancelScheduledValues(0);
-            e.gain.setValueAtTime(this.nearZero, audioContext.currentTime);
-            e.when = -1;
+            return envelope;
+        };
+        this.adjustPreset = (audioContext, preset) => {
+            for (let i = 0; i < preset.zones.length; i++) {
+                this.adjustZone(audioContext, preset.zones[i]);
+            }
+        };
+        //鳴らしたい音の"zone"を生成
+        this.adjustZone = (audioContext, zone) => {
+            if (zone.buffer) {
+                //
+            }
+            else {
+                // zone.delay = 0;
+                if (zone.sample) {
+                    const decoded = atob(zone.sample);
+                    zone.buffer = audioContext.createBuffer(1, decoded.length / 2, zone.sampleRate);
+                    const float32Array = zone.buffer.getChannelData(0);
+                    let b1, b2, n;
+                    for (let i = 0; i < decoded.length / 2; i++) {
+                        b1 = decoded.charCodeAt(i * 2);
+                        b2 = decoded.charCodeAt(i * 2 + 1);
+                        if (b1 < 0) {
+                            b1 = 256 + b1;
+                        }
+                        if (b2 < 0) {
+                            b2 = 256 + b2;
+                        }
+                        n = b2 * 256 + b1;
+                        if (n >= 65536 / 2) {
+                            n = n - 65536;
+                        }
+                        float32Array[i] = n / 65536.0;
+                    }
+                }
+                else {
+                    if (zone.file) {
+                        const datalen = zone.file.length;
+                        const arraybuffer = new ArrayBuffer(datalen);
+                        const view = new Uint8Array(arraybuffer);
+                        const decoded = atob(zone.file);
+                        let b;
+                        for (let i = 0; i < decoded.length; i++) {
+                            b = decoded.charCodeAt(i);
+                            view[i] = b;
+                        }
+                        audioContext.decodeAudioData(arraybuffer, function (audioBuffer) {
+                            zone.buffer = audioBuffer;
+                        });
+                    }
+                }
+                zone.loopStart = this.numValue(zone.loopStart, 0);
+                zone.loopEnd = this.numValue(zone.loopEnd, 0);
+                zone.coarseTune = this.numValue(zone.coarseTune, 0);
+                zone.fineTune = this.numValue(zone.fineTune, 0);
+                zone.originalPitch = this.numValue(zone.originalPitch, 6000);
+                zone.sampleRate = this.numValue(zone.sampleRate, 44100);
+                zone.sustain = this.numValue(zone.originalPitch, 0);
+            }
+        };
+        //鳴らしたい高さの音を探す
+        this.findZone = (audioContext, preset, pitch) => {
+            let zone = null;
+            for (let i = preset.zones.length - 1; i >= 0; i--) {
+                zone = preset.zones[i];
+                if (zone.keyRangeLow <= pitch && zone.keyRangeHigh + 1 >= pitch) {
+                    break;
+                }
+            }
             try {
-                e.audioBufferSourceNode.disconnect();
+                this.adjustZone(audioContext, zone);
             }
             catch (ex) {
-                console.log(ex);
+                console.log('adjustZone', ex);
             }
-        }
-    };
-    return this;
+            return zone;
+        };
+        return this;
+    }
 }
 exports.WebAudioFontPlayer = WebAudioFontPlayer;
 ;
@@ -321,7 +312,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const WebAudioFontPlayer_1 = require("./WebAudioFontPlayer");
 const axios_1 = require("axios");
 const ctx = new AudioContext();
-const player = WebAudioFontPlayer_1.WebAudioFontPlayer();
+const player = new WebAudioFontPlayer_1.WebAudioFontPlayer();
 const instruments = [];
 const midiNotes = [];
 const getPageTitle = () => decodeURI(location.pathname.split("/")[2]);
@@ -338,11 +329,13 @@ const midiNoteOn = (pitch, velocity) => {
         envelope: envelope
     };
     midiNotes.push(note);
+    console.log(envelope);
 };
 const midiNoteOff = (pitch) => {
     for (let i = 0; i < midiNotes.length; i++) {
         if (midiNotes[i].pitch == pitch) {
             if (midiNotes[i].envelope) {
+                console.log(midiNotes[i].envelope);
                 midiNotes[i].envelope.cancel();
             }
             midiNotes.splice(i, 1);
@@ -384,29 +377,28 @@ const requestMIDIAccessSuccess = (midi) => {
     }
     midi.onstatechange = onMIDIStateChange;
 };
-const getSoundfontURL = (pageTitle) => __awaiter(this, void 0, void 0, function* () {
+const getPageData = (pageTitle) => __awaiter(this, void 0, void 0, function* () {
     const res = yield fetch(`https://scrapbox.io/api/pages/scrapbox-instrument/${pageTitle}`); //axios
     const { lines } = yield res.json();
-    for (let line of lines) {
-        const matched = line.text.match(/https\:\/\/stkay.github.io\/webaudiofontdata\/sound\/.*\.json/);
-        if (matched) {
-            return matched[0];
-        }
-    }
-    for (let line of lines) {
-        const matched = line.text.match(/http.*\.(wav|mp3)/);
-        if (matched) {
-            return matched[0];
-        }
-    }
-    return "";
+    return lines;
 });
-const getTone = (url) => __awaiter(this, void 0, void 0, function* () {
-    if (url.match(/http.*\.(wav|mp3)/)) {
-        return soundfontFromSoundURL(yield getDataUrlFromSoundURL(url));
+const generateTone = (pageData) => __awaiter(this, void 0, void 0, function* () {
+    console.log(pageData);
+    const { soundUrl, fontUrl, release } = pageData;
+    let font;
+    if (fontUrl !== undefined) {
+        const res = yield fetch(fontUrl);
+        font = yield res.json();
     }
-    const res = yield fetch(url); //axios
-    return yield res.json();
+    else if (soundUrl !== undefined) {
+        font = soundfontFromSoundURL(yield getDataUrlFromSoundURL(soundUrl));
+    }
+    if (release !== undefined) {
+        for (let zone of font.zones) {
+            zone.release = release; //楽器変更しても継承されちゃう
+        }
+    }
+    return font;
 });
 const getDataUrlFromSoundURL = (url) => {
     return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
@@ -444,15 +436,41 @@ const soundfontFromSoundURL = (dataUrl) => {
         ]
     };
 };
+const matcher = (lines, regExp) => {
+    for (let line of lines) {
+        const matched = line.text.match(regExp);
+        if (matched) {
+            return matched[0];
+        }
+    }
+    return undefined;
+};
+const parsePage = (lines) => {
+    const getfontUrl = () => matcher(lines, /https\:\/\/stkay.github.io\/webaudiofontdata\/sound\/.*\.json/);
+    const getSoundUrl = () => matcher(lines, /http.*\.(wav|mp3)/);
+    const getReleaseTime = () => {
+        const matched = matcher(lines, /release:\d+(?:\.\d+)?/);
+        if (matched) {
+            const str = matched.split("release:")[1];
+            if (str) {
+                return Number(str);
+            }
+        }
+        return undefined;
+    };
+    let data = {};
+    data.fontUrl = getfontUrl();
+    data.soundUrl = getSoundUrl();
+    data.release = getReleaseTime();
+    return data;
+};
 //ページ遷移をハンドル
 setInterval(() => __awaiter(this, void 0, void 0, function* () {
     const pageTitle = getPageTitle();
     if (pageTitle && oldPageTitle !== pageTitle) {
         console.log("change instrument");
-        if (!instruments[pageTitle]) {
-            //wavなら
-            instruments[pageTitle] = yield getTone(yield getSoundfontURL(pageTitle));
-        }
+        //wavなら
+        instruments[pageTitle] = yield generateTone(parsePage(yield getPageData(pageTitle)));
         tone = instruments[pageTitle];
         oldPageTitle = pageTitle;
     }
