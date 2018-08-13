@@ -38,41 +38,6 @@ export class WebAudioFontPlayer {
         return this;
     }
 
-    // this.queueChord = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
-    //   volume = this.limitVolume(volume);
-    //   for (var i = 0; i < pitches.length; i++) {
-    //     this.queueWaveTable(audioContext, target, preset, when, pitches[i], duration, volume - Math.random() * 0.01, slides);
-    //   }
-    // };
-    // this.queueStrumUp = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
-    //   pitches.sort(function (a, b) {
-    //     return b - a;
-    //   });
-    //   this.queueStrum(audioContext, target, preset, when, pitches, duration, volume, slides);
-    // };
-    // this.queueStrumDown = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
-    //   pitches.sort(function (a, b) {
-    //     return a - b;
-    //   });
-    //   this.queueStrum(audioContext, target, preset, when, pitches, duration, volume, slides);
-    // };
-    // this.queueStrum = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
-    //   volume = this.limitVolume(volume);
-    //   if (when < audioContext.currentTime) {
-    //     when = audioContext.currentTime;
-    //   }
-    //   for (var i = 0; i < pitches.length; i++) {
-    //     this.queueWaveTable(audioContext, target, preset, when + i * 0.01, pitches[i], duration, volume - Math.random() * 0.01, slides);
-    //     volume = 0.9 * volume;
-    //   }
-    // };
-    // this.queueSnap = function (audioContext, target, preset, when, pitches, duration, volume, slides) {
-    //   volume = this.limitVolume(volume);
-    //   volume = 1.5 * (volume || 1.0);z
-    //   duration = 0.05;
-    //   this.queueChord(audioContext, target, preset, when, pitches, duration, volume, slides);
-    // };
-
     //別にWebAudioFontPlayerのメンバにキューイングしてるわけではない
     //どの音をどのように鳴らすか、というのを引数で受ける
     public queueWaveTable = (audioContext: AudioContext, target, preset, when, pitch, duration, volume, slides?): Envelope => {
@@ -199,38 +164,16 @@ export class WebAudioFontPlayer {
 
     findEnvelope = (audioContext, target, when, duration, releaseTime = 0.1): Envelope => {
         console.log(`WebAudioFontPlayer.js: findEnvelope() releaseTime: ${releaseTime}`);
-        let envelope: Envelope = null;
-        for (let e of this.envelopes) {
-            if (e.target == target && audioContext.currentTime > e.when + e.duration + 0.001) {
-                try {
-                    e.audioBufferSourceNode.disconnect();
-                    e.audioBufferSourceNode.stop(0);
-                    e.audioBufferSourceNode = null;
-                } catch (x) {
-                    //audioBufferSourceNode is dead already
-                }
-                envelope = e;
-                break;
-            }
-        }
-
-        if (!(envelope)) {
-            envelope = audioContext.createGain();
-            envelope.target = target;
-            envelope.connect(target);
-            envelope.cancel = () => {
-                if (envelope.when + envelope.duration > audioContext.currentTime) {
-                    //最初の楽器のreleaseTimeを継承してしまう
-                    //もしかしてWebAudioFontPlayerに保存されている？
-                    console.log(`WebAudioFontPlayer.js: cancel() releaseTime: ${releaseTime}`);
-                    envelope.gain.cancelScheduledValues(0);
-                    envelope.gain.setTargetAtTime(0.00001, audioContext.currentTime, releaseTime);
-                    envelope.when = audioContext.currentTime + 0.00001;
-                    envelope.duration = 0;
-                }
-            };
-            this.envelopes.push(envelope);
-        }
+        const envelope: Envelope = audioContext.createGain();
+        envelope.target = target;
+        envelope.connect(target);
+        envelope.cancel = () => {
+            console.log(`WebAudioFontPlayer.js: cancel() releaseTime: ${releaseTime}`);
+            envelope.gain.cancelScheduledValues(0);
+            envelope.gain.setTargetAtTime(0.00001, audioContext.currentTime, releaseTime);
+            envelope.when = audioContext.currentTime + 0.00001;
+            envelope.duration = 0;
+        };
         return envelope;
     };
 
@@ -303,19 +246,4 @@ export class WebAudioFontPlayer {
         }
         return zone;
     };
-
-// this.cancelQueue = function (audioContext) {
-//   for (var i = 0; i < this.envelopes.length; i++) {
-//     var e = this.envelopes[i];
-//     e.gain.cancelScheduledValues(0);
-//     console.log(`WebAudioFontPlayer.js: cancelQueue()`)
-//     e.gain.setValueAtTime(this.nearZero, audioContext.currentTime);
-//     e.when = -1;
-//     try {
-//       e.audioBufferSourceNode.disconnect();
-//     } catch (ex) {
-//       console.log(ex);
-//     }
-//   }
-// };
 }
