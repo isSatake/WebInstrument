@@ -107,16 +107,8 @@ class WebAudioFontPlayer {
             envelope.preset = preset;
             return envelope; //envelopeを返す
         };
-        this.noZeroVolume = (n) => {
-            if (n > this.nearZero) {
-                return n;
-            }
-            else {
-                return this.nearZero;
-            }
-        };
         this.setupEnvelope = (audioContext, envelope, zone, volume, when, sampleDuration, noteDuration) => {
-            envelope.gain.setValueAtTime(this.noZeroVolume(0), audioContext.currentTime);
+            envelope.gain.setValueAtTime(0, audioContext.currentTime);
             let lastTime = 0;
             let lastVolume = 0;
             let duration = noteDuration;
@@ -153,21 +145,21 @@ class WebAudioFontPlayer {
                 ];
             }
             envelope.gain.cancelScheduledValues(when);
-            envelope.gain.setValueAtTime(this.noZeroVolume(ahdsr[0].volume * volume), when);
+            envelope.gain.setValueAtTime(ahdsr[0].volume * volume, when);
             for (let i = 0; i < ahdsr.length; i++) {
                 if (ahdsr[i].duration > 0) {
                     if (ahdsr[i].duration + lastTime > duration) {
                         const r = 1 - (ahdsr[i].duration + lastTime - duration) / ahdsr[i].duration;
                         const n = lastVolume - r * (lastVolume - ahdsr[i].volume);
-                        envelope.gain.linearRampToValueAtTime(this.noZeroVolume(volume * n), when + duration);
+                        envelope.gain.linearRampToValueAtTime(volume * n, when + duration);
                         break;
                     }
                     lastTime = lastTime + ahdsr[i].duration;
                     lastVolume = ahdsr[i].volume;
-                    envelope.gain.linearRampToValueAtTime(this.noZeroVolume(volume * lastVolume), when + lastTime);
+                    envelope.gain.linearRampToValueAtTime(volume * lastVolume, when + lastTime);
                 }
             }
-            envelope.gain.linearRampToValueAtTime(this.noZeroVolume(0), when + duration + this.afterTime);
+            envelope.gain.linearRampToValueAtTime(0, when + duration + this.afterTime);
         };
         this.findEnvelope = (audioContext, target, when, duration, releaseTime = 0.1) => {
             console.log(`WebAudioFontPlayer.js: findEnvelope() releaseTime: ${releaseTime}`);
