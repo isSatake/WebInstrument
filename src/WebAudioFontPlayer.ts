@@ -16,7 +16,7 @@ export type Zone = {
     originalPitch: number,
     sampleRate: number,
     sustain: number,
-    delay,
+    offset?: number,
     release?: number,
     file?: string,
     sample?: any,
@@ -46,6 +46,7 @@ export class WebAudioFontPlayer {
             console.log('empty buffer ', zone);
             return;
         }
+        console.log(`WebAudioFontPlayer.ts queueWaveTable(): zone.delay: ${zone.offset}`);
 
         const baseDetune = zone.originalPitch - 100.0 * zone.coarseTune - zone.fineTune;
         const playbackRate = Math.pow(2, (100.0 * pitch - baseDetune) / 1200.0);
@@ -65,7 +66,6 @@ export class WebAudioFontPlayer {
             }
         }
 
-        console.log(`WebAudioFontPlayer.js: queueWaveTable() releaseTime: ${zone.release}`);
         //envelopeは音量変化を定義するもの
         const envelope = this.findEnvelope(audioContext, target, startWhen, waveDuration, zone.release);
         //純粋な関数にできねーかな
@@ -99,7 +99,7 @@ export class WebAudioFontPlayer {
 
         //ここで鳴らす
         envelope.audioBufferSourceNode.connect(envelope);
-        envelope.audioBufferSourceNode.start(startWhen, zone.delay);
+        envelope.audioBufferSourceNode.start(startWhen, zone.offset);
         envelope.audioBufferSourceNode.stop(startWhen + waveDuration);
         envelope.when = startWhen;
         envelope.duration = waveDuration;
@@ -163,12 +163,10 @@ export class WebAudioFontPlayer {
     };
 
     findEnvelope = (audioContext, target, when, duration, releaseTime = 0.1): Envelope => {
-        console.log(`WebAudioFontPlayer.js: findEnvelope() releaseTime: ${releaseTime}`);
         const envelope: Envelope = audioContext.createGain();
         envelope.target = target;
         envelope.connect(target);
         envelope.cancel = () => {
-            console.log(`WebAudioFontPlayer.js: cancel() releaseTime: ${releaseTime}`);
             envelope.gain.cancelScheduledValues(0);
             envelope.gain.setTargetAtTime(0.00001, audioContext.currentTime, releaseTime);
             envelope.when = audioContext.currentTime + 0.00001;
@@ -188,7 +186,7 @@ export class WebAudioFontPlayer {
         if (zone.buffer) {
             return zone;
         }
-        // zone.delay = 0;
+        // zone.offset = 0;
         if (zone.sample) {
             const decoded = atob(zone.sample);
             zone.buffer = audioContext.createBuffer(1, decoded.length / 2, zone.sampleRate);

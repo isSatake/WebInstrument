@@ -86,7 +86,7 @@ const getPageData = async (pageTitle: string) => {
 
 const generateTone = async (pageData: PageData) => {
     console.log(pageData);
-    const {soundUrl, fontUrl, release} = pageData;
+    const {soundUrl, fontUrl, release, offset} = pageData;
     let font;
     if (fontUrl !== undefined) {
         const res = await fetch(fontUrl);
@@ -97,6 +97,11 @@ const generateTone = async (pageData: PageData) => {
     if (release !== undefined) {
         for(let zone of font.zones){
             zone.release = release; //楽器変更しても継承されちゃう
+        }
+    }
+    if (offset !== undefined) {
+        for(let zone of font.zones){
+            zone.offset = offset; //楽器変更しても継承されちゃう
         }
     }
     return font
@@ -132,7 +137,7 @@ const soundfontFromSoundURL = (dataUrl: string) => {
                 fineTune: 0,					//tune correction in cents
                 sampleRate: 44100,				//音声のサンプルレート ループでしか使ってないようなので適当でいい
                 ahdsr: false,					//adsrをいじるかどうか
-                delay: 0,                       //再生開始時間 とりあえずペンディング
+                offset: 0,                       //再生開始時間 とりあえずペンディング
                 release: 0.1,                   //ページ内で変更可能になる
                 file: dataUrl.split("data:audio/wav;base64,")[1]    //base64 APIで取れる？
             }
@@ -144,10 +149,11 @@ type PageData = {
     soundUrl?: string,
     fontUrl?: string,
     release?: number,
+    offset?: number,
     pitchHogeHoge?: boolean
 }
 
-const matcher = (lines: { text: string }[], regExp: RegExp): string | undefined => {
+const strMatcher = (lines: { text: string }[], regExp: RegExp): string | undefined => {
     for (let line of lines) {
         const matched = line.text.match(regExp);
         if (matched) {
@@ -158,12 +164,22 @@ const matcher = (lines: { text: string }[], regExp: RegExp): string | undefined 
 };
 
 const parsePage = (lines: { text: string }[]): PageData => {
-    const getfontUrl = () => matcher(lines, /https\:\/\/stkay.github.io\/webaudiofontdata\/sound\/.*\.json/);
-    const getSoundUrl = () => matcher(lines, /http.*\.(wav|mp3)/);
+    const getfontUrl = () => strMatcher(lines, /https\:\/\/stkay.github.io\/webaudiofontdata\/sound\/.*\.json/);
+    const getSoundUrl = () => strMatcher(lines, /http.*\.(wav|mp3)/);
     const getReleaseTime = () => {
-        const matched = matcher(lines, /release:\d+(?:\.\d+)?/);
+        const matched = strMatcher(lines, /release:\d+(?:\.\d+)?/);
         if (matched) {
             const str = matched.split("release:")[1];
+            if (str) {
+                return Number(str)
+            }
+        }
+        return undefined
+    };
+    const getOffsetTime = () => {
+        const matched = strMatcher(lines, /offset:\d+(?:\.\d+)?/);
+        if (matched) {
+            const str = matched.split("offset:")[1];
             if (str) {
                 return Number(str)
             }
@@ -174,6 +190,8 @@ const parsePage = (lines: { text: string }[]): PageData => {
     data.fontUrl = getfontUrl();
     data.soundUrl = getSoundUrl();
     data.release = getReleaseTime();
+    data.offset = getOffsetTime();
+    console.log(`content.ts parsePage(): data.offset: ${data.offset}`);
     return data
 };
 

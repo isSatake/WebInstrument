@@ -16,6 +16,7 @@ class WebAudioFontPlayer {
                 console.log('empty buffer ', zone);
                 return;
             }
+            console.log(`WebAudioFontPlayer.ts queueWaveTable(): zone.delay: ${zone.offset}`);
             const baseDetune = zone.originalPitch - 100.0 * zone.coarseTune - zone.fineTune;
             const playbackRate = Math.pow(2, (100.0 * pitch - baseDetune) / 1200.0);
             const sampleRatio = zone.sampleRate / audioContext.sampleRate;
@@ -33,7 +34,6 @@ class WebAudioFontPlayer {
                     waveDuration = zone.buffer.duration / playbackRate;
                 }
             }
-            console.log(`WebAudioFontPlayer.js: queueWaveTable() releaseTime: ${zone.release}`);
             //envelopeは音量変化を定義するもの
             const envelope = this.findEnvelope(audioContext, target, startWhen, waveDuration, zone.release);
             //純粋な関数にできねーかな
@@ -65,7 +65,7 @@ class WebAudioFontPlayer {
             }
             //ここで鳴らす
             envelope.audioBufferSourceNode.connect(envelope);
-            envelope.audioBufferSourceNode.start(startWhen, zone.delay);
+            envelope.audioBufferSourceNode.start(startWhen, zone.offset);
             envelope.audioBufferSourceNode.stop(startWhen + waveDuration);
             envelope.when = startWhen;
             envelope.duration = waveDuration;
@@ -128,12 +128,10 @@ class WebAudioFontPlayer {
             envelope.gain.linearRampToValueAtTime(0, when + duration + this.afterTime);
         };
         this.findEnvelope = (audioContext, target, when, duration, releaseTime = 0.1) => {
-            console.log(`WebAudioFontPlayer.js: findEnvelope() releaseTime: ${releaseTime}`);
             const envelope = audioContext.createGain();
             envelope.target = target;
             envelope.connect(target);
             envelope.cancel = () => {
-                console.log(`WebAudioFontPlayer.js: cancel() releaseTime: ${releaseTime}`);
                 envelope.gain.cancelScheduledValues(0);
                 envelope.gain.setTargetAtTime(0.00001, audioContext.currentTime, releaseTime);
                 envelope.when = audioContext.currentTime + 0.00001;
@@ -151,7 +149,7 @@ class WebAudioFontPlayer {
             if (zone.buffer) {
                 return zone;
             }
-            // zone.delay = 0;
+            // zone.offset = 0;
             if (zone.sample) {
                 const decoded = atob(zone.sample);
                 zone.buffer = audioContext.createBuffer(1, decoded.length / 2, zone.sampleRate);
@@ -296,7 +294,7 @@ const getPageData = (pageTitle) => __awaiter(this, void 0, void 0, function* () 
 });
 const generateTone = (pageData) => __awaiter(this, void 0, void 0, function* () {
     console.log(pageData);
-    const { soundUrl, fontUrl, release } = pageData;
+    const { soundUrl, fontUrl, release, offset } = pageData;
     let font;
     if (fontUrl !== undefined) {
         const res = yield fetch(fontUrl);
@@ -308,6 +306,11 @@ const generateTone = (pageData) => __awaiter(this, void 0, void 0, function* () 
     if (release !== undefined) {
         for (let zone of font.zones) {
             zone.release = release; //楽器変更しても継承されちゃう
+        }
+    }
+    if (offset !== undefined) {
+        for (let zone of font.zones) {
+            zone.offset = offset; //楽器変更しても継承されちゃう
         }
     }
     return font;
@@ -341,14 +344,14 @@ const soundfontFromSoundURL = (dataUrl) => {
                 fineTune: 0,
                 sampleRate: 44100,
                 ahdsr: false,
-                delay: 0,
+                offset: 0,
                 release: 0.1,
                 file: dataUrl.split("data:audio/wav;base64,")[1] //base64 APIで取れる？
             }
         ]
     };
 };
-const matcher = (lines, regExp) => {
+const strMatcher = (lines, regExp) => {
     for (let line of lines) {
         const matched = line.text.match(regExp);
         if (matched) {
@@ -358,12 +361,22 @@ const matcher = (lines, regExp) => {
     return undefined;
 };
 const parsePage = (lines) => {
-    const getfontUrl = () => matcher(lines, /https\:\/\/stkay.github.io\/webaudiofontdata\/sound\/.*\.json/);
-    const getSoundUrl = () => matcher(lines, /http.*\.(wav|mp3)/);
+    const getfontUrl = () => strMatcher(lines, /https\:\/\/stkay.github.io\/webaudiofontdata\/sound\/.*\.json/);
+    const getSoundUrl = () => strMatcher(lines, /http.*\.(wav|mp3)/);
     const getReleaseTime = () => {
-        const matched = matcher(lines, /release:\d+(?:\.\d+)?/);
+        const matched = strMatcher(lines, /release:\d+(?:\.\d+)?/);
         if (matched) {
             const str = matched.split("release:")[1];
+            if (str) {
+                return Number(str);
+            }
+        }
+        return undefined;
+    };
+    const getOffsetTime = () => {
+        const matched = strMatcher(lines, /offset:\d+(?:\.\d+)?/);
+        if (matched) {
+            const str = matched.split("offset:")[1];
             if (str) {
                 return Number(str);
             }
@@ -374,6 +387,8 @@ const parsePage = (lines) => {
     data.fontUrl = getfontUrl();
     data.soundUrl = getSoundUrl();
     data.release = getReleaseTime();
+    data.offset = getOffsetTime();
+    console.log(`content.ts parsePage(): data.offset: ${data.offset}`);
     return data;
 };
 //ページ遷移をハンドル
