@@ -360,21 +360,33 @@ const strMatcher = (lines, regExp) => {
     }
     return undefined;
 };
+const parameterMatcher = (lines, parameter) => {
+    const regExp = new RegExp(`\\[?${parameter}]?:\\d+(?:\\.\\d+)?`);
+    const matched = strMatcher(lines, regExp).replace(/(\[|])/g, "");
+    if (matched) {
+        const str = matched.split(`${parameter}:`)[1];
+        if (str) {
+            return Number(str);
+        }
+    }
+    return undefined;
+};
 const parsePage = (lines) => {
     const getfontUrl = () => strMatcher(lines, /https\:\/\/stkay.github.io\/webaudiofontdata\/sound\/.*\.json/);
     const getSoundUrl = () => strMatcher(lines, /http.*\.(wav|mp3)/);
-    const getReleaseTime = () => {
-        const matched = strMatcher(lines, /release:\d+(?:\.\d+)?/);
-        if (matched) {
-            const str = matched.split("release:")[1];
-            if (str) {
-                return Number(str);
-            }
-        }
-        return undefined;
-    };
+    const getReleaseTime = () => parameterMatcher(lines, "release");
+    // {
+    //     const matched = strMatcher(lines, /\[?release]?:\d+(?:\.\d+)?/).replace(/(\[|])/g, "");
+    //     if (matched) {
+    //         const str = matched.split("release:")[1];
+    //         if (str) {
+    //             return Number(str)
+    //         }
+    //     }
+    //     return undefined
+    // };
     const getOffsetTime = () => {
-        const matched = strMatcher(lines, /offset:\d+(?:\.\d+)?/);
+        const matched = strMatcher(lines, /\[?offset]?:\d+(?:\.\d+)?/).replace(/(\[|])/g, "");
         if (matched) {
             const str = matched.split("offset:")[1];
             if (str) {
