@@ -10,13 +10,12 @@ class WebAudioFontPlayer {
         this.nearZero = 0.000001;
         //別にWebAudioFontPlayerのメンバにキューイングしてるわけではない
         //どの音をどのように鳴らすか、というのを引数で受ける
-        this.queueWaveTable = (audioContext, target, preset, when, pitch, duration, volume, slides) => {
-            const zone = this.findZone(audioContext, preset, pitch);
+        this.queueWaveTable = (audioContext, target, font, when, pitch, duration, volume, slides) => {
+            const zone = this.findZone(audioContext, font, pitch);
             if (!(zone.buffer)) {
                 console.log('empty buffer ', zone);
                 return;
             }
-            console.log(`WebAudioFontPlayer.ts queueWaveTable(): zone.delay: ${zone.offset}`);
             const baseDetune = zone.originalPitch - 100.0 * zone.coarseTune - zone.fineTune;
             const playbackRate = Math.pow(2, (100.0 * pitch - baseDetune) / 1200.0);
             const sampleRatio = zone.sampleRate / audioContext.sampleRate;
@@ -70,7 +69,7 @@ class WebAudioFontPlayer {
             envelope.when = startWhen;
             envelope.duration = waveDuration;
             envelope.pitch = pitch;
-            envelope.preset = preset;
+            envelope.font = font;
             return envelope; //envelopeを返す
         };
         this.setupEnvelope = (audioContext, envelope, zone, volume, when, sampleDuration, noteDuration) => {
@@ -189,10 +188,10 @@ class WebAudioFontPlayer {
             }
         };
         //鳴らしたい高さの音を探す
-        this.findZone = (audioContext, preset, pitch) => {
+        this.findZone = (audioContext, font, pitch) => {
             let zone = null;
-            for (let i = preset.zones.length - 1; i >= 0; i--) {
-                zone = preset.zones[i];
+            for (let i = font.zones.length - 1; i >= 0; i--) {
+                zone = font.zones[i];
                 if (zone.keyRangeLow <= pitch && zone.keyRangeHigh + 1 >= pitch) {
                     break;
                 }
@@ -232,7 +231,7 @@ let oldPageTitle;
 let tone = instruments[getPageTitle()];
 console.log("Hello from WebInstrumentExtension");
 const midiNoteOn = (pitch, velocity) => {
-    console.log("midiNoteOn", pitch, velocity);
+    console.log("midiNoteOn:", "pitch:", pitch, "velo:", velocity);
     console.log("tone", tone);
     midiNoteOff(pitch);
     const envelope = player.queueWaveTable(ctx, ctx.destination, tone, 0, pitch, 123456789, velocity / 100);
@@ -292,37 +291,12 @@ const getPageData = (pageTitle) => __awaiter(this, void 0, void 0, function* () 
     const { lines } = yield res.json();
     return lines;
 });
-const generateTone = (pageData) => __awaiter(this, void 0, void 0, function* () {
-    console.log(pageData);
-    const { soundUrl, fontUrl, release, offset } = pageData;
-    let font;
-    if (fontUrl !== undefined) {
-        const res = yield fetch(fontUrl);
-        font = yield res.json();
-    }
-    else if (soundUrl !== undefined) {
-        font = soundfontFromSoundURL(yield getDataUrlFromSoundURL(soundUrl));
-    }
-    if (release !== undefined) {
-        for (let zone of font.zones) {
-            zone.release = release; //楽器変更しても継承されちゃう
-        }
-    }
-    if (offset !== undefined) {
-        for (let zone of font.zones) {
-            zone.offset = offset; //楽器変更しても継承されちゃう
-        }
-    }
-    return font;
-});
 const getDataUrlFromSoundURL = (url) => {
     return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
         const res = yield axios_1.default.get(url, { responseType: "blob" });
-        console.log(res);
         const reader = new FileReader();
         reader.readAsDataURL(res.data);
         reader.onload = () => {
-            console.log("onload");
             resolve(reader.result);
         };
         reader.onerror = (err) => {
@@ -351,6 +325,21 @@ const soundfontFromSoundURL = (dataUrl) => {
         ]
     };
 };
+const zoneTemprate = {
+    midi: 0,
+    originalPitch: 6100,
+    keyRangeLow: 0,
+    keyRangeHigh: 108,
+    loopStart: -1,
+    loopEnd: -1,
+    coarseTune: 1,
+    fineTune: 0,
+    sampleRate: 44100,
+    ahdsr: false,
+    offset: 0,
+    release: 0.1,
+    file: "" //base64エンコードした音声ファイル
+};
 const strMatcher = (lines, regExp) => {
     for (let line of lines) {
         const matched = line.text.match(regExp);
@@ -362,64 +351,191 @@ const strMatcher = (lines, regExp) => {
 };
 const parameterMatcher = (lines, parameter) => {
     const regExp = new RegExp(`\\[?${parameter}]?:\\d+(?:\\.\\d+)?`);
-    const matched = strMatcher(lines, regExp).replace(/(\[|])/g, "");
+    const matched = strMatcher(lines, regExp);
     if (matched) {
-        const str = matched.split(`${parameter}:`)[1];
+        const str = matched.replace(/(\[|])/g, "").split(`${parameter}:`)[1];
         if (str) {
             return Number(str);
         }
     }
     return undefined;
 };
-const parsePage = (lines) => {
-    const getfontUrl = () => strMatcher(lines, /https\:\/\/stkay.github.io\/webaudiofontdata\/sound\/.*\.json/);
-    const getSoundUrl = () => strMatcher(lines, /http.*\.(wav|mp3)/);
-    const getReleaseTime = () => parameterMatcher(lines, "release");
-    // {
-    //     const matched = strMatcher(lines, /\[?release]?:\d+(?:\.\d+)?/).replace(/(\[|])/g, "");
-    //     if (matched) {
-    //         const str = matched.split("release:")[1];
-    //         if (str) {
-    //             return Number(str)
-    //         }
-    //     }
-    //     return undefined
-    // };
-    const getOffsetTime = () => {
-        const matched = strMatcher(lines, /\[?offset]?:\d+(?:\.\d+)?/).replace(/(\[|])/g, "");
-        if (matched) {
-            const str = matched.split("offset:")[1];
-            if (str) {
-                return Number(str);
+const getPageLink = (line) => {
+    const matched = line.text.match(/\[(?!.*https?:\/\/[a-zA-Z0-9\-.\/?@&=:~#]+).*]/);
+    if (matched) {
+        const str = matched[0].replace(/(\[|])/g, "");
+        if (str)
+            return str;
+    }
+    return undefined;
+};
+const getFontUrl = (line) => {
+    const matched = line.text.match(/https\:\/\/stkay.github.io\/webaudiofontdata\/sound\/.*\.json/);
+    if (matched)
+        return matched[0];
+    return undefined;
+};
+const getSoundUrl = (line) => {
+    const matched = line.text.match(/http.*\.(wav|mp3)/);
+    if (matched)
+        return matched[0];
+    return undefined;
+};
+const getParameter = (line, parameter) => {
+    const regExp = new RegExp(`\\[?${parameter}]?:\\d+(?:\\.\\d+)?`);
+    const matched = line.text.match(regExp);
+    if (matched) {
+        const str = matched[0].replace(/(\[|])/g, "").split(`${parameter}:`)[1];
+        if (str) {
+            return Number(str);
+        }
+    }
+    return undefined;
+};
+const isEmpty = (obj) => {
+    for (let key of Object.keys(obj)) {
+        if (obj[key])
+            return false;
+    }
+    return true;
+};
+const pageParams = ["release", "offset", "track", "noteNumber"];
+//音源ページでなければ空配列を返す
+const parsePage = (lines) => __awaiter(this, void 0, void 0, function* () {
+    const title = lines[0].text;
+    const data = [];
+    const isSoundSet = strMatcher(lines, /#音源リスト/) !== undefined;
+    let currentPageData;
+    console.log("parsePage:", title, "isSoundSet:", isSoundSet);
+    //lineを1行ずつパースする
+    for (let line of lines) {
+        //パラメーター取得
+        if (currentPageData) {
+            //パラメーターは連続した行に記述される
+            let hasParams = false;
+            for (let parameter of pageParams) {
+                const value = getParameter(line, parameter);
+                if (value) {
+                    currentPageData[parameter] = value;
+                    hasParams = true;
+                }
+            }
+            //パラメーターが無ければpagesにpushする
+            if (hasParams)
+                continue;
+            data.push(currentPageData);
+            currentPageData = undefined;
+        }
+        //音源リストでない場合はここで終了
+        if (data.length === 1 && !isSoundSet)
+            break; //for文を中断して抜けるのはbreakだっけ？
+        //font urlの場合
+        const fontUrl = getFontUrl(line);
+        if (fontUrl) {
+            currentPageData = {
+                fontUrl: fontUrl
+            };
+            continue;
+        }
+        //sound urlの場合
+        const soundUrl = getSoundUrl(line);
+        if (soundUrl) {
+            currentPageData = {
+                soundUrl: soundUrl
+            };
+            continue;
+        }
+        //ページリンクの場合
+        //issue: 外部リンクは無視したい
+        const link = getPageLink(line);
+        if (link) {
+            //リンク先にURLが記述されている？
+            const _data = yield parsePage(yield getPageData(link));
+            //リンク先が単体の音源でなければ無視
+            if (_data.length == 1) {
+                //パラメーターの取得へ
+                currentPageData = _data[0];
             }
         }
-        return undefined;
-    };
-    let data = {};
-    data.fontUrl = getfontUrl();
-    data.soundUrl = getSoundUrl();
-    data.release = getReleaseTime();
-    data.offset = getOffsetTime();
-    console.log(`content.ts parsePage(): data.offset: ${data.offset}`);
+    }
+    console.log("parsePage:", title, "PageData[]:", data);
     return data;
-};
+});
+const generateZone = (data) => __awaiter(this, void 0, void 0, function* () {
+    const { soundUrl, fontUrl, release, offset, noteNumber } = data;
+    let zone;
+    if (fontUrl) {
+        //TODO 既存のsoundfontと音源リストと共存するのは難しいのでペンディング
+    }
+    else if (soundUrl) {
+        const dataUrl = yield getDataUrlFromSoundURL(soundUrl);
+        const fileObj = { file: dataUrl.split("data:audio/wav;base64,")[1] };
+        zone = Object.assign(zoneTemprate, fileObj);
+    }
+    if (release)
+        zone.release = release;
+    if (offset)
+        zone.offset = offset;
+    zone.keyRangeLow = noteNumber;
+    zone.keyRangeHigh = noteNumber;
+    console.log("generateZone: Zone", zone);
+    return zone;
+});
+const generateFont = (data) => __awaiter(this, void 0, void 0, function* () {
+    //単体音源の場合
+    if (data.length === 1) {
+        console.log("generateFont: 単体音源");
+        const { soundUrl, fontUrl, release, offset } = data[0];
+        let font;
+        if (fontUrl) {
+            const res = yield fetch(fontUrl);
+            font = yield res.json();
+        }
+        else if (soundUrl) {
+            const dataUrl = yield getDataUrlFromSoundURL(soundUrl);
+            const fileObj = { file: dataUrl.split("data:audio/wav;base64,")[1] };
+            const zone = Object.assign(zoneTemprate, fileObj);
+            font = { zones: [zone] };
+        }
+        if (release) {
+            for (let zone of font.zones) {
+                zone.release = release;
+            }
+        }
+        if (offset) {
+            for (let zone of font.zones) {
+                zone.offset = offset;
+            }
+        }
+        return font;
+    }
+    //音源リストの場合
+    //TODO ノートナンバーについて
+    //ノートナンバーが未指定の音源リスト->60番から順にアサインする
+    //1つ目の音源が70番で、2つ目が未指定なら71番に入れる
+    //もし3つ目以降が71番を指定したら構わず上書きする
+    //複雑なのでノートナンバーが指定されたことを想定して実装する
+    console.log("generateFont: 音源リスト");
+    const font = { zones: [] };
+    for (let page of data) {
+        font.zones.push(yield generateZone(page));
+    }
+    return font;
+});
 //ページ遷移をハンドル
 setInterval(() => __awaiter(this, void 0, void 0, function* () {
     const pageTitle = getPageTitle();
     if (pageTitle && oldPageTitle !== pageTitle) {
+        oldPageTitle = pageTitle;
         console.log("change instrument");
         //wavなら
-        instruments[pageTitle] = yield generateTone(parsePage(yield getPageData(pageTitle)));
+        const font = yield generateFont(yield parsePage(yield getPageData(pageTitle)));
+        console.log("font", font);
+        instruments[pageTitle] = font;
         tone = instruments[pageTitle];
-        oldPageTitle = pageTitle;
     }
 }), 1000);
-console.log("requestMIDIaccess");
 navigator.requestMIDIAccess().then(requestMIDIAccessSuccess, requestMIDIAccessFailure);
-// (async () => {
-//     console.log("hi");
-//     console.log(await dataUrlFromSoundURL("https://gyaon.com/sound/c6f7d4648a6120c0943e38c2edac4108.wav"));
-// })();
 
 },{"./WebAudioFontPlayer":1,"axios":3}],3:[function(require,module,exports){
 module.exports = require('./lib/axios');

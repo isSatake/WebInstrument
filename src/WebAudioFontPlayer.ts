@@ -1,31 +1,4 @@
-export type Envelope = {
-    target,
-    cancel: () => void,
-    when,
-    duration,
-    pitch,
-    preset,
-    audioBufferSourceNode
-} & GainNode
-
-export type Zone = {
-    loopStart: number,
-    loopEnd: number,
-    coarseTune: number,
-    fineTune: number,
-    originalPitch: number,
-    sampleRate: number,
-    sustain: number,
-    offset?: number,
-    release?: number,
-    file?: string,
-    sample?: any,
-    buffer?: any
-}
-
-type Preset = {
-    zones: Zone[]
-}
+import {Envelope, Font, Zone} from "./types";
 
 export class WebAudioFontPlayer {
     private envelopes: Envelope[] = [];
@@ -40,13 +13,12 @@ export class WebAudioFontPlayer {
 
     //別にWebAudioFontPlayerのメンバにキューイングしてるわけではない
     //どの音をどのように鳴らすか、というのを引数で受ける
-    public queueWaveTable = (audioContext: AudioContext, target, preset, when, pitch, duration, volume, slides?): Envelope => {
-        const zone: Zone = this.findZone(audioContext, preset, pitch);
+    public queueWaveTable = (audioContext: AudioContext, target, font: Font, when, pitch, duration, volume, slides?): Envelope => {
+        const zone: Zone = this.findZone(audioContext, font, pitch);
         if (!(zone.buffer)) {
             console.log('empty buffer ', zone);
             return;
         }
-        console.log(`WebAudioFontPlayer.ts queueWaveTable(): zone.delay: ${zone.offset}`);
 
         const baseDetune = zone.originalPitch - 100.0 * zone.coarseTune - zone.fineTune;
         const playbackRate = Math.pow(2, (100.0 * pitch - baseDetune) / 1200.0);
@@ -104,7 +76,7 @@ export class WebAudioFontPlayer {
         envelope.when = startWhen;
         envelope.duration = waveDuration;
         envelope.pitch = pitch;
-        envelope.preset = preset;
+        envelope.font = font;
         return envelope; //envelopeを返す
     };
 
@@ -229,10 +201,10 @@ export class WebAudioFontPlayer {
 
 
     //鳴らしたい高さの音を探す
-    findZone = (audioContext: AudioContext, preset: Preset, pitch): Zone => {
+    findZone = (audioContext: AudioContext, font: Font, pitch): Zone => {
         let zone = null;
-        for (let i = preset.zones.length - 1; i >= 0; i--) {
-            zone = preset.zones[i];
+        for (let i = font.zones.length - 1; i >= 0; i--) {
+            zone = font.zones[i];
             if (zone.keyRangeLow <= pitch && zone.keyRangeHigh + 1 >= pitch) {
                 break;
             }
