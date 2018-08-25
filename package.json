@@ -12,6 +12,7 @@
   "author": "stkay <stkayy@gmail.com>",
   "license": "MIT",
   "devDependencies": {
+    "@types/chrome": "0.0.72",
     "@types/node": "^10.5.2",
     "@types/webmidi": "^2.0.2",
     "browserify": "^16.2.2",

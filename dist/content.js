@@ -222,6 +222,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 const WebAudioFontPlayer_1 = require("./WebAudioFontPlayer");
 const axios_1 = require("axios");
+const keymap_1 = require("./keymap");
+const status_1 = require("./status");
 const ctx = new AudioContext();
 const player = new WebAudioFontPlayer_1.WebAudioFontPlayer();
 const instruments = [];
@@ -229,7 +231,23 @@ const midiNotes = [];
 const getPageTitle = () => decodeURI(location.pathname.split("/")[2]);
 let oldPageTitle;
 let tone = instruments[getPageTitle()];
+let octaveOffset = 5; //middle C
+let doesHandlePCKey = false;
 console.log("Hello from WebInstrumentExtension");
+const handleKeyDown = (e) => {
+    if (!doesHandlePCKey)
+        return;
+    e.preventDefault();
+    const { keyCode } = e;
+    if (keyCode === 38)
+        octaveOffset++;
+    if (keyCode === 40)
+        octaveOffset--;
+    const pitch = keymap_1.keymap[keyCode];
+    if (pitch == undefined)
+        return;
+    midiNoteOn(pitch + (octaveOffset * 12), 100);
+};
 const midiNoteOn = (pitch, velocity) => {
     console.log("midiNoteOn:", "pitch:", pitch, "velo:", velocity);
     console.log("tone", tone);
@@ -303,27 +321,6 @@ const getDataUrlFromSoundURL = (url) => {
             reject(err);
         };
     }));
-};
-const soundfontFromSoundURL = (dataUrl) => {
-    return {
-        zones: [
-            {
-                midi: 0,
-                originalPitch: 6100,
-                keyRangeLow: 0,
-                keyRangeHigh: 108,
-                loopStart: -1,
-                loopEnd: -1,
-                coarseTune: 1,
-                fineTune: 0,
-                sampleRate: 44100,
-                ahdsr: false,
-                offset: 0,
-                release: 0.1,
-                file: dataUrl.split("data:audio/wav;base64,")[1] //base64 APIで取れる？
-            }
-        ]
-    };
 };
 const zoneTemprate = {
     midi: 0,
@@ -519,6 +516,8 @@ const generateFont = (data) => __awaiter(this, void 0, void 0, function* () {
     const font = { zones: [] };
     for (let page of data) {
         font.zones.push(yield generateZone(page));
+        //TODO なぜか同じzoneがpushされてしまう
+        //最後に指定した音源がpushされてるな
     }
     return font;
 });
@@ -535,11 +534,75 @@ setInterval(() => __awaiter(this, void 0, void 0, function* () {
         tone = instruments[pageTitle];
     }
 }), 1000);
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.message === "change_input_source")
+        console.log("content_script", "received onclick event");
+    changeInputSource();
+});
+const changeInputSource = () => {
+    doesHandlePCKey = !doesHandlePCKey;
+    status_1.updateSourceEl(doesHandlePCKey);
+};
+chrome.runtime.sendMessage({ message: "WebInstrument" });
 navigator.requestMIDIAccess().then(requestMIDIAccessSuccess, requestMIDIAccessFailure);
+window.addEventListener("keydown", (e) => handleKeyDown(e));
+status_1.updateSourceEl(doesHandlePCKey);
 
-},{"./WebAudioFontPlayer":1,"axios":3}],3:[function(require,module,exports){
+},{"./WebAudioFontPlayer":1,"./keymap":3,"./status":4,"axios":5}],3:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+// keycode: MIDI#
+// オフセットを使ってオクターブ変更可能にする
+// aキーをmiddleCにしたければオフセットは60にする
+exports.keymap = {
+    '65': 0,
+    '87': 1,
+    '83': 2,
+    '69': 3,
+    '68': 4,
+    '70': 5,
+    '84': 6,
+    '71': 7,
+    '89': 8,
+    '72': 9,
+    '85': 10,
+    '74': 11,
+    '75': 12,
+    '79': 13,
+    '76': 14,
+    '80': 15,
+    '187': 16,
+    '186': 17,
+    '219': 18,
+    '221': 19,
+};
+
+},{}],4:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.updateSourceEl = (doesHandlePCKey) => {
+    const sourceEl = document.getElementById("sourceEl");
+    sourceEl.textContent = `source: ${doesHandlePCKey ? "PC key" : "MIDI device"}`;
+};
+const titleEl = document.createElement("div");
+titleEl.textContent = "WebInstrument";
+const sourceEl = document.createElement("div");
+sourceEl.setAttribute("id", "sourceEl");
+const webInstrumentEl = document.createElement("div");
+webInstrumentEl.appendChild(titleEl);
+webInstrumentEl.appendChild(sourceEl);
+const { style } = webInstrumentEl;
+style.position = "fixed";
+style.bottom = "0";
+style.left = "0";
+style.backgroundColor = "#f89174";
+style.zIndex = "300";
+const parentEl = document.getElementById("app-container");
+parentEl.appendChild(webInstrumentEl);
+
+},{}],5:[function(require,module,exports){
 module.exports = require('./lib/axios');
-},{"./lib/axios":5}],4:[function(require,module,exports){
+},{"./lib/axios":7}],6:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -723,7 +786,7 @@ module.exports = function xhrAdapter(config) {
 };
 
 }).call(this,require('_process'))
-},{"../core/createError":11,"./../core/settle":14,"./../helpers/btoa":18,"./../helpers/buildURL":19,"./../helpers/cookies":21,"./../helpers/isURLSameOrigin":23,"./../helpers/parseHeaders":25,"./../utils":27,"_process":29}],5:[function(require,module,exports){
+},{"../core/createError":13,"./../core/settle":16,"./../helpers/btoa":20,"./../helpers/buildURL":21,"./../helpers/cookies":23,"./../helpers/isURLSameOrigin":25,"./../helpers/parseHeaders":27,"./../utils":29,"_process":31}],7:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -777,7 +840,7 @@ module.exports = axios;
 // Allow use of default import syntax in TypeScript
 module.exports.default = axios;
 
-},{"./cancel/Cancel":6,"./cancel/CancelToken":7,"./cancel/isCancel":8,"./core/Axios":9,"./defaults":16,"./helpers/bind":17,"./helpers/spread":26,"./utils":27}],6:[function(require,module,exports){
+},{"./cancel/Cancel":8,"./cancel/CancelToken":9,"./cancel/isCancel":10,"./core/Axios":11,"./defaults":18,"./helpers/bind":19,"./helpers/spread":28,"./utils":29}],8:[function(require,module,exports){
 'use strict';
 
 /**
@@ -798,7 +861,7 @@ Cancel.prototype.__CANCEL__ = true;
 
 module.exports = Cancel;
 
-},{}],7:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 'use strict';
 
 var Cancel = require('./Cancel');
@@ -857,14 +920,14 @@ CancelToken.source = function source() {
 
 module.exports = CancelToken;
 
-},{"./Cancel":6}],8:[function(require,module,exports){
+},{"./Cancel":8}],10:[function(require,module,exports){
 'use strict';
 
 module.exports = function isCancel(value) {
   return !!(value && value.__CANCEL__);
 };
 
-},{}],9:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 'use strict';
 
 var defaults = require('./../defaults');
@@ -945,7 +1008,7 @@ utils.forEach(['post', 'put', 'patch'], function forEachMethodWithData(method) {
 
 module.exports = Axios;
 
-},{"./../defaults":16,"./../utils":27,"./InterceptorManager":10,"./dispatchRequest":12}],10:[function(require,module,exports){
+},{"./../defaults":18,"./../utils":29,"./InterceptorManager":12,"./dispatchRequest":14}],12:[function(require,module,exports){
 'use strict';
 
 var utils = require('./../utils');
@@ -999,7 +1062,7 @@ InterceptorManager.prototype.forEach = function forEach(fn) {
 
 module.exports = InterceptorManager;
 
-},{"./../utils":27}],11:[function(require,module,exports){
+},{"./../utils":29}],13:[function(require,module,exports){
 'use strict';
 
 var enhanceError = require('./enhanceError');
@@ -1019,7 +1082,7 @@ module.exports = function createError(message, config, code, request, response) 
   return enhanceError(error, config, code, request, response);
 };
 
-},{"./enhanceError":13}],12:[function(require,module,exports){
+},{"./enhanceError":15}],14:[function(require,module,exports){
 'use strict';
 
 var utils = require('./../utils');
@@ -1107,7 +1170,7 @@ module.exports = function dispatchRequest(config) {
   });
 };
 
-},{"../cancel/isCancel":8,"../defaults":16,"./../helpers/combineURLs":20,"./../helpers/isAbsoluteURL":22,"./../utils":27,"./transformData":15}],13:[function(require,module,exports){
+},{"../cancel/isCancel":10,"../defaults":18,"./../helpers/combineURLs":22,"./../helpers/isAbsoluteURL":24,"./../utils":29,"./transformData":17}],15:[function(require,module,exports){
 'use strict';
 
 /**
@@ -1130,7 +1193,7 @@ module.exports = function enhanceError(error, config, code, request, response) {
   return error;
 };
 
-},{}],14:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 'use strict';
 
 var createError = require('./createError');
@@ -1158,7 +1221,7 @@ module.exports = function settle(resolve, reject, response) {
   }
 };
 
-},{"./createError":11}],15:[function(require,module,exports){
+},{"./createError":13}],17:[function(require,module,exports){
 'use strict';
 
 var utils = require('./../utils');
@@ -1180,7 +1243,7 @@ module.exports = function transformData(data, headers, fns) {
   return data;
 };
 
-},{"./../utils":27}],16:[function(require,module,exports){
+},{"./../utils":29}],18:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -1280,7 +1343,7 @@ utils.forEach(['post', 'put', 'patch'], function forEachMethodWithData(method) {
 module.exports = defaults;
 
 }).call(this,require('_process'))
-},{"./adapters/http":4,"./adapters/xhr":4,"./helpers/normalizeHeaderName":24,"./utils":27,"_process":29}],17:[function(require,module,exports){
+},{"./adapters/http":6,"./adapters/xhr":6,"./helpers/normalizeHeaderName":26,"./utils":29,"_process":31}],19:[function(require,module,exports){
 'use strict';
 
 module.exports = function bind(fn, thisArg) {
@@ -1293,7 +1356,7 @@ module.exports = function bind(fn, thisArg) {
   };
 };
 
-},{}],18:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 'use strict';
 
 // btoa polyfill for IE<10 courtesy https://github.com/davidchambers/Base64.js
@@ -1331,7 +1394,7 @@ function btoa(input) {
 
 module.exports = btoa;
 
-},{}],19:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 'use strict';
 
 var utils = require('./../utils');
@@ -1399,7 +1462,7 @@ module.exports = function buildURL(url, params, paramsSerializer) {
   return url;
 };
 
-},{"./../utils":27}],20:[function(require,module,exports){
+},{"./../utils":29}],22:[function(require,module,exports){
 'use strict';
 
 /**
@@ -1415,7 +1478,7 @@ module.exports = function combineURLs(baseURL, relativeURL) {
     : baseURL;
 };
 
-},{}],21:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 'use strict';
 
 var utils = require('./../utils');
@@ -1470,7 +1533,7 @@ module.exports = (
   })()
 );
 
-},{"./../utils":27}],22:[function(require,module,exports){
+},{"./../utils":29}],24:[function(require,module,exports){
 'use strict';
 
 /**
@@ -1486,7 +1549,7 @@ module.exports = function isAbsoluteURL(url) {
   return /^([a-z][a-z\d\+\-\.]*:)?\/\//i.test(url);
 };
 
-},{}],23:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 'use strict';
 
 var utils = require('./../utils');
@@ -1556,7 +1619,7 @@ module.exports = (
   })()
 );
 
-},{"./../utils":27}],24:[function(require,module,exports){
+},{"./../utils":29}],26:[function(require,module,exports){
 'use strict';
 
 var utils = require('../utils');
@@ -1570,7 +1633,7 @@ module.exports = function normalizeHeaderName(headers, normalizedName) {
   });
 };
 
-},{"../utils":27}],25:[function(require,module,exports){
+},{"../utils":29}],27:[function(require,module,exports){
 'use strict';
 
 var utils = require('./../utils');
@@ -1625,7 +1688,7 @@ module.exports = function parseHeaders(headers) {
   return parsed;
 };
 
-},{"./../utils":27}],26:[function(require,module,exports){
+},{"./../utils":29}],28:[function(require,module,exports){
 'use strict';
 
 /**
@@ -1654,7 +1717,7 @@ module.exports = function spread(callback) {
   };
 };
 
-},{}],27:[function(require,module,exports){
+},{}],29:[function(require,module,exports){
 'use strict';
 
 var bind = require('./helpers/bind');
@@ -1959,7 +2022,7 @@ module.exports = {
   trim: trim
 };
 
-},{"./helpers/bind":17,"is-buffer":28}],28:[function(require,module,exports){
+},{"./helpers/bind":19,"is-buffer":30}],30:[function(require,module,exports){
 /*!
  * Determine if an object is a Buffer
  *
@@ -1982,7 +2045,7 @@ function isSlowBuffer (obj) {
   return typeof obj.readFloatLE === 'function' && typeof obj.slice === 'function' && isBuffer(obj.slice(0, 0))
 }
 
-},{}],29:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 

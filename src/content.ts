@@ -1,6 +1,8 @@
 import {WebAudioFontPlayer} from "./WebAudioFontPlayer";
 import axios from "axios";
 import {Font, Line, Note, PageData, Zone} from "./types";
+import {keymap} from "./keymap";
+import {updateSourceEl} from "./status";
 
 const ctx = new AudioContext();
 const player = new WebAudioFontPlayer();
@@ -9,8 +11,19 @@ const midiNotes: Note[] = [];
 const getPageTitle = () => decodeURI(location.pathname.split("/")[2]);
 let oldPageTitle: string;
 let tone: Font = instruments[getPageTitle()];
+let octaveOffset: number = 5; //middle C
+let doesHandlePCKey: boolean = false;
 
-console.log("Hello from WebInstrumentExtension");
+const handleKeyDown = (e) => {
+    if (!doesHandlePCKey) return;
+    e.preventDefault();
+    const {keyCode} = e;
+    if (keyCode === 38) octaveOffset++;
+    if (keyCode === 40) octaveOffset--;
+    const pitch = keymap[keyCode];
+    if (pitch == undefined) return;
+    midiNoteOn(pitch + (octaveOffset * 12), 100);
+};
 
 const midiNoteOn = (pitch, velocity) => {
     console.log("midiNoteOn:", "pitch:", pitch, "velo:", velocity);
@@ -60,11 +73,9 @@ const onMIDImessage = (event) => {
 };
 
 //MIDIリクエスト
-const requestMIDIAccessFailure = (e) => {
-    console.log('failed to requestMIDIAccess', e);
-};
+const requestMIDIAccessFailure = e => console.log('failed to requestMIDIAccess', e);
 
-const requestMIDIAccessSuccess = (midi) => {
+const requestMIDIAccessSuccess = midi => {
     console.log("succeeded to requestMIDIAccess");
     const inputs = midi.inputs.values();
     for (let input = inputs.next(); input && !input.done; input = inputs.next()) {
@@ -303,7 +314,6 @@ const generateFont = async (data: PageData[]): Promise<Font> => {
     return font
 };
 
-
 //ページ遷移をハンドル
 setInterval(async () => {
     const pageTitle = getPageTitle();
@@ -318,4 +328,18 @@ setInterval(async () => {
     }
 }, 1000);
 
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.message === "change_input_source")
+        console.log("content_script", "received onclick event");
+        changeInputSource();
+});
+
+const changeInputSource = () => {
+    doesHandlePCKey = !doesHandlePCKey;
+    updateSourceEl(doesHandlePCKey);
+};
+
+chrome.runtime.sendMessage({message: "WebInstrument"});
 navigator.requestMIDIAccess().then(requestMIDIAccessSuccess, requestMIDIAccessFailure);
+window.addEventListener("keydown", (e) => handleKeyDown(e));
+updateSourceEl(doesHandlePCKey);

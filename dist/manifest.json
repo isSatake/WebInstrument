@@ -6,17 +6,24 @@
     "activeTab",
     "tabs",
     "storage",
+    "background",
     "*://*/*"
   ],
   "content_scripts": [
     {
       "matches": [
-        "https://scrapbox.io/*"
+        "https://scrapbox.io/scrapbox-instrument/*"
       ],
       "js": [
         "content.js"
       ]
     }
   ],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": false
+  },
+  "browser_action": {
+  },
   "manifest_version": 2
 }
