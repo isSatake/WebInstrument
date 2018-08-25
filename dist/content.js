@@ -233,7 +233,6 @@ let oldPageTitle;
 let tone = instruments[getPageTitle()];
 let octaveOffset = 5; //middle C
 let doesHandlePCKey = false;
-console.log("Hello from WebInstrumentExtension");
 const handleKeyDown = (e) => {
     if (!doesHandlePCKey)
         return;
@@ -292,10 +291,8 @@ const onMIDImessage = (event) => {
     }
 };
 //MIDIリクエスト
-const requestMIDIAccessFailure = (e) => {
-    console.log('failed to requestMIDIAccess', e);
-};
-const requestMIDIAccessSuccess = (midi) => {
+const requestMIDIAccessFailure = e => console.log('failed to requestMIDIAccess', e);
+const requestMIDIAccessSuccess = midi => {
     console.log("succeeded to requestMIDIAccess");
     const inputs = midi.inputs.values();
     for (let input = inputs.next(); input && !input.done; input = inputs.next()) {
@@ -402,10 +399,15 @@ const parsePage = (lines) => __awaiter(this, void 0, void 0, function* () {
     const title = lines[0].text;
     const data = [];
     const isSoundSet = strMatcher(lines, /#音源リスト/) !== undefined;
+    const linelen = lines.length;
     let currentPageData;
     console.log("parsePage:", title, "isSoundSet:", isSoundSet);
     //lineを1行ずつパースする
-    for (let line of lines) {
+    for (let i in lines) {
+        const line = lines[i];
+        const isLastLine = () => {
+            return Number(i) === linelen - 1;
+        };
         //パラメーター取得
         if (currentPageData) {
             //パラメーターは連続した行に記述される
@@ -417,21 +419,23 @@ const parsePage = (lines) => __awaiter(this, void 0, void 0, function* () {
                     hasParams = true;
                 }
             }
-            //パラメーターが無ければpagesにpushする
-            if (hasParams)
+            //パラメーターが無い or 最後の行ならばpagesにpushする
+            if (hasParams && !isLastLine())
                 continue;
             data.push(currentPageData);
             currentPageData = undefined;
         }
         //音源リストでない場合はここで終了
         if (data.length === 1 && !isSoundSet)
-            break; //for文を中断して抜けるのはbreakだっけ？
+            break;
         //font urlの場合
         const fontUrl = getFontUrl(line);
         if (fontUrl) {
             currentPageData = {
                 fontUrl: fontUrl
             };
+            if (isLastLine())
+                data.push(currentPageData);
             continue;
         }
         //sound urlの場合
@@ -440,10 +444,11 @@ const parsePage = (lines) => __awaiter(this, void 0, void 0, function* () {
             currentPageData = {
                 soundUrl: soundUrl
             };
+            if (isLastLine())
+                data.push(currentPageData);
             continue;
         }
         //ページリンクの場合
-        //issue: 外部リンクは無視したい
         const link = getPageLink(line);
         if (link) {
             //リンク先にURLが記述されている？
@@ -453,6 +458,8 @@ const parsePage = (lines) => __awaiter(this, void 0, void 0, function* () {
                 //パラメーターの取得へ
                 currentPageData = _data[0];
             }
+            if (isLastLine())
+                data.push(currentPageData);
         }
     }
     console.log("parsePage:", title, "PageData[]:", data);
@@ -479,6 +486,10 @@ const generateZone = (data) => __awaiter(this, void 0, void 0, function* () {
     return zone;
 });
 const generateFont = (data) => __awaiter(this, void 0, void 0, function* () {
+    if (data.length === 0) {
+        console.log("generateFont: 音源じゃない");
+        return undefined;
+    }
     //単体音源の場合
     if (data.length === 1) {
         console.log("generateFont: 単体音源");
@@ -529,6 +540,8 @@ setInterval(() => __awaiter(this, void 0, void 0, function* () {
         console.log("change instrument");
         //wavなら
         const font = yield generateFont(yield parsePage(yield getPageData(pageTitle)));
+        if (!font)
+            return;
         console.log("font", font);
         instruments[pageTitle] = font;
         tone = instruments[pageTitle];
@@ -580,10 +593,6 @@ exports.keymap = {
 },{}],4:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateSourceEl = (doesHandlePCKey) => {
-    const sourceEl = document.getElementById("sourceEl");
-    sourceEl.textContent = `source: ${doesHandlePCKey ? "PC key" : "MIDI device"}`;
-};
 const titleEl = document.createElement("div");
 titleEl.textContent = "WebInstrument";
 const sourceEl = document.createElement("div");
@@ -599,6 +608,10 @@ style.backgroundColor = "#f89174";
 style.zIndex = "300";
 const parentEl = document.getElementById("app-container");
 parentEl.appendChild(webInstrumentEl);
+exports.updateSourceEl = (doesHandlePCKey) => {
+    const sourceEl = document.getElementById("sourceEl");
+    sourceEl.textContent = `source: ${doesHandlePCKey ? "PC key" : "MIDI device"}`;
+};
 
 },{}],5:[function(require,module,exports){
 module.exports = require('./lib/axios');

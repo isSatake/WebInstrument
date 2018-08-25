@@ -3,6 +3,7 @@ import axios from "axios";
 import {Font, Line, Note, PageData, Zone} from "./types";
 import {keymap} from "./keymap";
 import {updateSourceEl} from "./status";
+import {isNullOrUndefined} from "util";
 
 const ctx = new AudioContext();
 const player = new WebAudioFontPlayer();
@@ -191,11 +192,17 @@ const parsePage = async (lines: Line[]): Promise<PageData[]> => {
     const title = lines[0].text;
     const data: PageData[] = [];
     const isSoundSet: boolean = strMatcher(lines, /#音源リスト/) !== undefined;
+    const linelen = lines.length;
     let currentPageData: PageData;
 
     console.log("parsePage:", title, "isSoundSet:", isSoundSet);
     //lineを1行ずつパースする
-    for (let line of lines) {
+    for (let i in lines) {
+        const line = lines[i];
+        const isLastLine = (): boolean => {
+            return Number(i) === linelen - 1
+        };
+
         //パラメーター取得
         if (currentPageData) {
             //パラメーターは連続した行に記述される
@@ -207,14 +214,14 @@ const parsePage = async (lines: Line[]): Promise<PageData[]> => {
                     hasParams = true;
                 }
             }
-            //パラメーターが無ければpagesにpushする
-            if (hasParams) continue;
+            //パラメーターが無い or 最後の行ならばpagesにpushする
+            if (hasParams && !isLastLine()) continue;
             data.push(currentPageData);
             currentPageData = undefined;
         }
 
         //音源リストでない場合はここで終了
-        if (data.length === 1 && !isSoundSet) break; //for文を中断して抜けるのはbreakだっけ？
+        if (data.length === 1 && !isSoundSet) break;
 
         //font urlの場合
         const fontUrl = getFontUrl(line);
@@ -222,6 +229,7 @@ const parsePage = async (lines: Line[]): Promise<PageData[]> => {
             currentPageData = {
                 fontUrl: fontUrl
             };
+            if(isLastLine()) data.push(currentPageData);
             continue;
         }
 
@@ -231,11 +239,11 @@ const parsePage = async (lines: Line[]): Promise<PageData[]> => {
             currentPageData = {
                 soundUrl: soundUrl
             };
+            if(isLastLine()) data.push(currentPageData);
             continue;
         }
 
         //ページリンクの場合
-        //issue: 外部リンクは無視したい
         const link = getPageLink(line);
 
         if (link) {
@@ -246,6 +254,7 @@ const parsePage = async (lines: Line[]): Promise<PageData[]> => {
                 //パラメーターの取得へ
                 currentPageData = _data[0];
             }
+            if(isLastLine()) data.push(currentPageData);
         }
     }
     console.log("parsePage:", title, "PageData[]:", data);
@@ -271,6 +280,11 @@ const generateZone = async (data: PageData): Promise<Zone> => {
 };
 
 const generateFont = async (data: PageData[]): Promise<Font> => {
+    if (data.length === 0) {
+        console.log("generateFont: 音源じゃない");
+        return undefined
+    }
+
     //単体音源の場合
     if (data.length === 1) {
         console.log("generateFont: 単体音源");
@@ -304,6 +318,7 @@ const generateFont = async (data: PageData[]): Promise<Font> => {
     //1つ目の音源が70番で、2つ目が未指定なら71番に入れる
     //もし3つ目以降が71番を指定したら構わず上書きする
     //複雑なのでノートナンバーが指定されたことを想定して実装する
+
     console.log("generateFont: 音源リスト");
     const font: Font = {zones: []};
     for (let page of data) {
@@ -322,6 +337,7 @@ setInterval(async () => {
         console.log("change instrument");
         //wavなら
         const font = await generateFont(await parsePage(await getPageData(pageTitle)));
+        if(!font) return;
         console.log("font", font);
         instruments[pageTitle] = font;
         tone = instruments[pageTitle];
@@ -331,7 +347,7 @@ setInterval(async () => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.message === "change_input_source")
         console.log("content_script", "received onclick event");
-        changeInputSource();
+    changeInputSource();
 });
 
 const changeInputSource = () => {
