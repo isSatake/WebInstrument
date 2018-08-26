@@ -1,9 +1,8 @@
 import {WebAudioFontPlayer} from "./WebAudioFontPlayer";
 import axios from "axios";
 import {Font, Line, Note, PageData, Zone} from "./types";
-import {keymap} from "./keymap";
+import {keyToMIDI} from "./keyToMIDI";
 import {updateSourceEl} from "./status";
-import {isNullOrUndefined} from "util";
 
 const ctx = new AudioContext();
 const player = new WebAudioFontPlayer();
@@ -11,26 +10,35 @@ const instruments: Font[] = [];
 const midiNotes: Note[] = [];
 const getPageTitle = () => decodeURI(location.pathname.split("/")[2]);
 let oldPageTitle: string;
-let tone: Font = instruments[getPageTitle()];
+let tone: Font;
 let octaveOffset: number = 5; //middle C
 let doesHandlePCKey: boolean = false;
 
-const handleKeyDown = (e) => {
+const handleKeyDown = e => {
     if (!doesHandlePCKey) return;
     e.preventDefault();
-    const {keyCode} = e;
-    if (keyCode === 38) octaveOffset++;
-    if (keyCode === 40) octaveOffset--;
-    const pitch = keymap[keyCode];
+    const {key} = e;
+    console.log("handlekeydown", key);
+    if (key === "AllowUp") octaveOffset++;
+    if (key === "AllowDown") octaveOffset--;
+    const pitch = keyToMIDI[key];
     if (pitch == undefined) return;
     midiNoteOn(pitch + (octaveOffset * 12), 100);
 };
 
-const midiNoteOn = (pitch, velocity) => {
+const handleKeyUp = e => {
+    if (!doesHandlePCKey) return;
+    e.preventDefault();
+    const {key} = e;
+    const pitch = keyToMIDI[key];
+    if (pitch == undefined) return;
+    midiNoteOff(pitch + (octaveOffset * 12));
+};
+
+const midiNoteOn = async (pitch, velocity) => {
     console.log("midiNoteOn:", "pitch:", pitch, "velo:", velocity);
-    console.log("tone", tone);
     midiNoteOff(pitch);
-    const envelope = player.queueWaveTable(ctx, ctx.destination, tone, 0, pitch, 123456789, velocity / 100);
+    const envelope = await player.queueWaveTable(ctx, ctx.destination, tone, 0, pitch, 123456789, velocity / 100);
     const note: Note = {
         pitch: pitch,
         envelope: envelope
@@ -117,11 +125,10 @@ const zoneTemprate: Zone = {
     fineTune: 0,					//tune correction in cents
     sampleRate: 44100,				//音声のサンプルレート ループでしか使ってないようなので適当でいい
     ahdsr: false,					//adsrをいじるかどうか
-    offset: 0,                      //再生開始時間 とりあえずペンディング
+    offset: 0,                      //再生開始時間
     release: 0.1,                   //ページ内で変更可能になる
     file: ""                        //base64エンコードした音声ファイル
 };
-
 
 const strMatcher = (lines: { text: string }[], regExp: RegExp): string | undefined => {
     for (let line of lines) {
@@ -176,13 +183,6 @@ const getParameter = (line: Line, parameter: string): number | boolean | undefin
         }
     }
     return undefined
-};
-
-const isEmpty = (obj: {}): boolean => {
-    for (let key of Object.keys(obj)) {
-        if (obj[key]) return false
-    }
-    return true
 };
 
 const pageParams = ["release", "offset", "track", "noteNumber"];
@@ -257,7 +257,7 @@ const parsePage = async (lines: Line[]): Promise<PageData[]> => {
             if(isLastLine()) data.push(currentPageData);
         }
     }
-    console.log("parsePage:", title, "PageData[]:", data);
+    console.log("parsePage:", title, "isSoundSet:", isSoundSet, "PageData[]:", data);
     return data
 };
 
@@ -269,25 +269,25 @@ const generateZone = async (data: PageData): Promise<Zone> => {
     } else if (soundUrl) {
         const dataUrl = await getDataUrlFromSoundURL(soundUrl);
         const fileObj = {file: dataUrl.split("data:audio/wav;base64,")[1]};
-        zone = Object.assign(zoneTemprate, fileObj);
+        zone = Object.assign({...zoneTemprate}, fileObj);
     }
     if (release) zone.release = release;
     if (offset) zone.offset = offset;
     zone.keyRangeLow = noteNumber;
     zone.keyRangeHigh = noteNumber;
-    console.log("generateZone: Zone", zone);
+    console.log("generateZone:", "Zone", zone);
     return zone;
 };
 
 const generateFont = async (data: PageData[]): Promise<Font> => {
     if (data.length === 0) {
-        console.log("generateFont: 音源じゃない");
+        console.log("generateFont:", "音源じゃない");
         return undefined
     }
 
     //単体音源の場合
     if (data.length === 1) {
-        console.log("generateFont: 単体音源");
+        console.log("generateFont:", "単体音源");
         const {soundUrl, fontUrl, release, offset} = data[0];
         let font: Font;
         if (fontUrl) {
@@ -296,7 +296,7 @@ const generateFont = async (data: PageData[]): Promise<Font> => {
         } else if (soundUrl) {
             const dataUrl = await getDataUrlFromSoundURL(soundUrl);
             const fileObj = {file: dataUrl.split("data:audio/wav;base64,")[1]};
-            const zone = Object.assign(zoneTemprate, fileObj);
+            const zone = Object.assign({...zoneTemprate}, fileObj);
             font = {zones: [zone]}
         }
         if (release) {
@@ -319,12 +319,10 @@ const generateFont = async (data: PageData[]): Promise<Font> => {
     //もし3つ目以降が71番を指定したら構わず上書きする
     //複雑なのでノートナンバーが指定されたことを想定して実装する
 
-    console.log("generateFont: 音源リスト");
+    console.log("generateFont:", "音源リスト");
     const font: Font = {zones: []};
     for (let page of data) {
         font.zones.push(await generateZone(page));
-        //TODO なぜか同じzoneがpushされてしまう
-        //最後に指定した音源がpushされてるな
     }
     return font
 };
@@ -333,20 +331,22 @@ const generateFont = async (data: PageData[]): Promise<Font> => {
 setInterval(async () => {
     const pageTitle = getPageTitle();
     if (pageTitle && oldPageTitle !== pageTitle) {
+        console.log("setInterval:","change instrument");
         oldPageTitle = pageTitle;
-        console.log("change instrument");
-        //wavなら
-        const font = await generateFont(await parsePage(await getPageData(pageTitle)));
-        if(!font) return;
-        console.log("font", font);
-        instruments[pageTitle] = font;
-        tone = instruments[pageTitle];
+        if(instruments[pageTitle]){
+            tone = instruments[pageTitle];
+            return
+        }
+        const _tone = await generateFont(await parsePage(await getPageData(pageTitle)));
+        if(!_tone) return;
+        tone = _tone;
+        instruments[pageTitle] = _tone;
     }
 }, 1000);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.message === "change_input_source")
-        console.log("content_script", "received onclick event");
+        console.log("content_script:", "received onclick event");
     changeInputSource();
 });
 
@@ -357,5 +357,6 @@ const changeInputSource = () => {
 
 chrome.runtime.sendMessage({message: "WebInstrument"});
 navigator.requestMIDIAccess().then(requestMIDIAccessSuccess, requestMIDIAccessFailure);
-window.addEventListener("keydown", (e) => handleKeyDown(e));
+window.addEventListener("keydown", (e) => handleKeyDown(e)); //TODO 押しっぱなしのときどうするか
+window.addEventListener("keyup", (e) => handleKeyUp(e));
 updateSourceEl(doesHandlePCKey);

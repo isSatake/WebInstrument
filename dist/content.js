@@ -1,5 +1,13 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : new P(function (resolve) { resolve(result.value); }).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 class WebAudioFontPlayer {
     constructor() {
@@ -10,8 +18,8 @@ class WebAudioFontPlayer {
         this.nearZero = 0.000001;
         //別にWebAudioFontPlayerのメンバにキューイングしてるわけではない
         //どの音をどのように鳴らすか、というのを引数で受ける
-        this.queueWaveTable = (audioContext, target, font, when, pitch, duration, volume, slides) => {
-            const zone = this.findZone(audioContext, font, pitch);
+        this.queueWaveTable = (audioContext, target, font, when, pitch, duration, volume, slides) => __awaiter(this, void 0, void 0, function* () {
+            const zone = yield this.findZone(audioContext, font, pitch);
             if (!(zone.buffer)) {
                 console.log('empty buffer ', zone);
                 return;
@@ -71,7 +79,7 @@ class WebAudioFontPlayer {
             envelope.pitch = pitch;
             envelope.font = font;
             return envelope; //envelopeを返す
-        };
+        });
         this.setupEnvelope = (audioContext, envelope, zone, volume, when, sampleDuration, noteDuration) => {
             envelope.gain.setValueAtTime(0, audioContext.currentTime);
             let lastTime = 0;
@@ -138,13 +146,8 @@ class WebAudioFontPlayer {
             };
             return envelope;
         };
-        this.adjustPreset = (audioContext, preset) => {
-            for (let i = 0; i < preset.zones.length; i++) {
-                this.adjustZone(audioContext, preset.zones[i]);
-            }
-        };
         //鳴らしたい音の"zone"を生成
-        this.adjustZone = (audioContext, zone) => {
+        this.adjustZone = (audioContext, zone) => __awaiter(this, void 0, void 0, function* () {
             if (zone.buffer) {
                 return zone;
             }
@@ -181,29 +184,26 @@ class WebAudioFontPlayer {
                     b = decoded.charCodeAt(i);
                     view[i] = b;
                 }
-                audioContext.decodeAudioData(arraybuffer, function (audioBuffer) {
-                    zone.buffer = audioBuffer;
-                });
+                zone.buffer = yield audioContext.decodeAudioData(arraybuffer);
                 return zone;
             }
-        };
+        });
         //鳴らしたい高さの音を探す
-        this.findZone = (audioContext, font, pitch) => {
+        this.findZone = (audioContext, font, pitch) => __awaiter(this, void 0, void 0, function* () {
             let zone = null;
             for (let i = font.zones.length - 1; i >= 0; i--) {
                 zone = font.zones[i];
                 if (zone.keyRangeLow <= pitch && zone.keyRangeHigh + 1 >= pitch) {
-                    break;
+                    break; //pitchがzoneのピッチの範囲内ならfor文を抜ける
                 }
             }
             try {
-                this.adjustZone(audioContext, zone);
+                return yield this.adjustZone(audioContext, zone);
             }
             catch (ex) {
                 console.log('adjustZone', ex);
             }
-            return zone;
-        };
+        });
         return this;
     }
 }
@@ -222,7 +222,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 const WebAudioFontPlayer_1 = require("./WebAudioFontPlayer");
 const axios_1 = require("axios");
-const keymap_1 = require("./keymap");
+const keyToMIDI_1 = require("./keyToMIDI");
 const status_1 = require("./status");
 const ctx = new AudioContext();
 const player = new WebAudioFontPlayer_1.WebAudioFontPlayer();
@@ -230,34 +230,44 @@ const instruments = [];
 const midiNotes = [];
 const getPageTitle = () => decodeURI(location.pathname.split("/")[2]);
 let oldPageTitle;
-let tone = instruments[getPageTitle()];
+let tone;
 let octaveOffset = 5; //middle C
 let doesHandlePCKey = false;
-const handleKeyDown = (e) => {
+const handleKeyDown = e => {
     if (!doesHandlePCKey)
         return;
     e.preventDefault();
-    const { keyCode } = e;
-    if (keyCode === 38)
+    const { key } = e;
+    console.log("handlekeydown", key);
+    if (key === "AllowUp")
         octaveOffset++;
-    if (keyCode === 40)
+    if (key === "AllowDown")
         octaveOffset--;
-    const pitch = keymap_1.keymap[keyCode];
+    const pitch = keyToMIDI_1.keyToMIDI[key];
     if (pitch == undefined)
         return;
     midiNoteOn(pitch + (octaveOffset * 12), 100);
 };
-const midiNoteOn = (pitch, velocity) => {
+const handleKeyUp = e => {
+    if (!doesHandlePCKey)
+        return;
+    e.preventDefault();
+    const { key } = e;
+    const pitch = keyToMIDI_1.keyToMIDI[key];
+    if (pitch == undefined)
+        return;
+    midiNoteOff(pitch + (octaveOffset * 12));
+};
+const midiNoteOn = (pitch, velocity) => __awaiter(this, void 0, void 0, function* () {
     console.log("midiNoteOn:", "pitch:", pitch, "velo:", velocity);
-    console.log("tone", tone);
     midiNoteOff(pitch);
-    const envelope = player.queueWaveTable(ctx, ctx.destination, tone, 0, pitch, 123456789, velocity / 100);
+    const envelope = yield player.queueWaveTable(ctx, ctx.destination, tone, 0, pitch, 123456789, velocity / 100);
     const note = {
         pitch: pitch,
         envelope: envelope
     };
     midiNotes.push(note);
-};
+});
 const midiNoteOff = (pitch) => {
     for (let i = 0; i < midiNotes.length; i++) {
         if (midiNotes[i].pitch == pitch) {
@@ -386,13 +396,6 @@ const getParameter = (line, parameter) => {
     }
     return undefined;
 };
-const isEmpty = (obj) => {
-    for (let key of Object.keys(obj)) {
-        if (obj[key])
-            return false;
-    }
-    return true;
-};
 const pageParams = ["release", "offset", "track", "noteNumber"];
 //音源ページでなければ空配列を返す
 const parsePage = (lines) => __awaiter(this, void 0, void 0, function* () {
@@ -462,7 +465,7 @@ const parsePage = (lines) => __awaiter(this, void 0, void 0, function* () {
                 data.push(currentPageData);
         }
     }
-    console.log("parsePage:", title, "PageData[]:", data);
+    console.log("parsePage:", title, "isSoundSet:", isSoundSet, "PageData[]:", data);
     return data;
 });
 const generateZone = (data) => __awaiter(this, void 0, void 0, function* () {
@@ -474,7 +477,7 @@ const generateZone = (data) => __awaiter(this, void 0, void 0, function* () {
     else if (soundUrl) {
         const dataUrl = yield getDataUrlFromSoundURL(soundUrl);
         const fileObj = { file: dataUrl.split("data:audio/wav;base64,")[1] };
-        zone = Object.assign(zoneTemprate, fileObj);
+        zone = Object.assign(Object.assign({}, zoneTemprate), fileObj);
     }
     if (release)
         zone.release = release;
@@ -482,17 +485,17 @@ const generateZone = (data) => __awaiter(this, void 0, void 0, function* () {
         zone.offset = offset;
     zone.keyRangeLow = noteNumber;
     zone.keyRangeHigh = noteNumber;
-    console.log("generateZone: Zone", zone);
+    console.log("generateZone:", "Zone", zone);
     return zone;
 });
 const generateFont = (data) => __awaiter(this, void 0, void 0, function* () {
     if (data.length === 0) {
-        console.log("generateFont: 音源じゃない");
+        console.log("generateFont:", "音源じゃない");
         return undefined;
     }
     //単体音源の場合
     if (data.length === 1) {
-        console.log("generateFont: 単体音源");
+        console.log("generateFont:", "単体音源");
         const { soundUrl, fontUrl, release, offset } = data[0];
         let font;
         if (fontUrl) {
@@ -502,7 +505,7 @@ const generateFont = (data) => __awaiter(this, void 0, void 0, function* () {
         else if (soundUrl) {
             const dataUrl = yield getDataUrlFromSoundURL(soundUrl);
             const fileObj = { file: dataUrl.split("data:audio/wav;base64,")[1] };
-            const zone = Object.assign(zoneTemprate, fileObj);
+            const zone = Object.assign(Object.assign({}, zoneTemprate), fileObj);
             font = { zones: [zone] };
         }
         if (release) {
@@ -523,12 +526,10 @@ const generateFont = (data) => __awaiter(this, void 0, void 0, function* () {
     //1つ目の音源が70番で、2つ目が未指定なら71番に入れる
     //もし3つ目以降が71番を指定したら構わず上書きする
     //複雑なのでノートナンバーが指定されたことを想定して実装する
-    console.log("generateFont: 音源リスト");
+    console.log("generateFont:", "音源リスト");
     const font = { zones: [] };
     for (let page of data) {
         font.zones.push(yield generateZone(page));
-        //TODO なぜか同じzoneがpushされてしまう
-        //最後に指定した音源がpushされてるな
     }
     return font;
 });
@@ -536,20 +537,22 @@ const generateFont = (data) => __awaiter(this, void 0, void 0, function* () {
 setInterval(() => __awaiter(this, void 0, void 0, function* () {
     const pageTitle = getPageTitle();
     if (pageTitle && oldPageTitle !== pageTitle) {
+        console.log("setInterval:", "change instrument");
         oldPageTitle = pageTitle;
-        console.log("change instrument");
-        //wavなら
-        const font = yield generateFont(yield parsePage(yield getPageData(pageTitle)));
-        if (!font)
+        if (instruments[pageTitle]) {
+            tone = instruments[pageTitle];
             return;
-        console.log("font", font);
-        instruments[pageTitle] = font;
-        tone = instruments[pageTitle];
+        }
+        const _tone = yield generateFont(yield parsePage(yield getPageData(pageTitle)));
+        if (!_tone)
+            return;
+        tone = _tone;
+        instruments[pageTitle] = _tone;
     }
 }), 1000);
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.message === "change_input_source")
-        console.log("content_script", "received onclick event");
+        console.log("content_script:", "received onclick event");
     changeInputSource();
 });
 const changeInputSource = () => {
@@ -558,36 +561,37 @@ const changeInputSource = () => {
 };
 chrome.runtime.sendMessage({ message: "WebInstrument" });
 navigator.requestMIDIAccess().then(requestMIDIAccessSuccess, requestMIDIAccessFailure);
-window.addEventListener("keydown", (e) => handleKeyDown(e));
+window.addEventListener("keydown", (e) => handleKeyDown(e)); //TODO 押しっぱなしのときどうするか
+window.addEventListener("keyup", (e) => handleKeyUp(e));
 status_1.updateSourceEl(doesHandlePCKey);
 
-},{"./WebAudioFontPlayer":1,"./keymap":3,"./status":4,"axios":5}],3:[function(require,module,exports){
+},{"./WebAudioFontPlayer":1,"./keyToMIDI":3,"./status":4,"axios":5}],3:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 // keycode: MIDI#
 // オフセットを使ってオクターブ変更可能にする
 // aキーをmiddleCにしたければオフセットは60にする
-exports.keymap = {
-    '65': 0,
-    '87': 1,
-    '83': 2,
-    '69': 3,
-    '68': 4,
-    '70': 5,
-    '84': 6,
-    '71': 7,
-    '89': 8,
-    '72': 9,
-    '85': 10,
-    '74': 11,
-    '75': 12,
-    '79': 13,
-    '76': 14,
-    '80': 15,
-    '187': 16,
-    '186': 17,
-    '219': 18,
-    '221': 19,
+exports.keyToMIDI = {
+    'a': 0,
+    'w': 1,
+    's': 2,
+    'e': 3,
+    'd': 4,
+    'f': 5,
+    't': 6,
+    'g': 7,
+    'y': 8,
+    'h': 9,
+    'u': 10,
+    'j': 11,
+    'k': 12,
+    'o': 13,
+    'l': 14,
+    'p': 15,
+    ';': 16,
+    ':': 17,
+    '[': 18,
+    ']': 19,
 };
 
 },{}],4:[function(require,module,exports){

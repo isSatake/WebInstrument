@@ -13,8 +13,8 @@ export class WebAudioFontPlayer {
 
     //別にWebAudioFontPlayerのメンバにキューイングしてるわけではない
     //どの音をどのように鳴らすか、というのを引数で受ける
-    public queueWaveTable = (audioContext: AudioContext, target, font: Font, when, pitch, duration, volume, slides?): Envelope => {
-        const zone: Zone = this.findZone(audioContext, font, pitch);
+    public queueWaveTable = async (audioContext: AudioContext, target, font: Font, when, pitch, duration, volume, slides?): Promise<Envelope> => {
+        const zone: Zone = await this.findZone(audioContext, font, pitch);
         if (!(zone.buffer)) {
             console.log('empty buffer ', zone);
             return;
@@ -147,14 +147,8 @@ export class WebAudioFontPlayer {
         return envelope;
     };
 
-    adjustPreset = (audioContext, preset) => {
-        for (let i = 0; i < preset.zones.length; i++) {
-            this.adjustZone(audioContext, preset.zones[i]);
-        }
-    };
-
     //鳴らしたい音の"zone"を生成
-    adjustZone = (audioContext: AudioContext, zone: Zone): Zone => {
+    adjustZone = async (audioContext: AudioContext, zone: Zone): Promise<Zone> => {
         if (zone.buffer) {
             return zone;
         }
@@ -192,28 +186,25 @@ export class WebAudioFontPlayer {
                 b = decoded.charCodeAt(i);
                 view[i] = b;
             }
-            audioContext.decodeAudioData(arraybuffer, function (audioBuffer) {
-                zone.buffer = audioBuffer;
-            });
+            zone.buffer = await audioContext.decodeAudioData(arraybuffer);
             return zone;
         }
     };
 
 
     //鳴らしたい高さの音を探す
-    findZone = (audioContext: AudioContext, font: Font, pitch): Zone => {
+    findZone = async (audioContext: AudioContext, font: Font, pitch: number): Promise<Zone> => {
         let zone = null;
         for (let i = font.zones.length - 1; i >= 0; i--) {
             zone = font.zones[i];
             if (zone.keyRangeLow <= pitch && zone.keyRangeHigh + 1 >= pitch) {
-                break;
+                break; //pitchがzoneのピッチの範囲内ならfor文を抜ける
             }
         }
         try {
-            this.adjustZone(audioContext, zone);
+            return await this.adjustZone(audioContext, zone);
         } catch (ex) {
             console.log('adjustZone', ex);
         }
-        return zone;
     };
 }
