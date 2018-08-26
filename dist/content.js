@@ -25,6 +25,7 @@ class WebAudioFontPlayer {
                 return;
             }
             const baseDetune = zone.originalPitch - 100.0 * zone.coarseTune - zone.fineTune;
+            pitch = zone.fixedPitch || pitch;
             const playbackRate = Math.pow(2, (100.0 * pitch - baseDetune) / 1200.0);
             const sampleRatio = zone.sampleRate / audioContext.sampleRate;
             let startWhen = when;
@@ -386,17 +387,24 @@ const getSoundUrl = (line) => {
     return undefined;
 };
 const getParameter = (line, parameter) => {
-    const regExp = new RegExp(`\\[?${parameter}]?:\\d+(?:\\.\\d+)?`);
+    const regExp = new RegExp(`\\[?${parameter}]?\\d+(?:\\.\\d+)?`);
     const matched = line.text.match(regExp);
     if (matched) {
-        const str = matched[0].replace(/(\[|])/g, "").split(`${parameter}:`)[1];
+        const str = matched[0].replace(/(\[|])/g, "").split(`${parameter}`)[1];
         if (str) {
             return Number(str);
         }
     }
     return undefined;
 };
-const pageParams = ["release", "offset", "track", "noteNumber"];
+const parameters = ["release", "offset", "track", "noteLow", "noteHigh", "fixedPitch"];
+const isParameter = (str) => {
+    for (let parameter of parameters) {
+        if (str === parameter)
+            return true;
+    }
+    return false;
+};
 //音源ページでなければ空配列を返す
 const parsePage = (lines) => __awaiter(this, void 0, void 0, function* () {
     const title = lines[0].text;
@@ -415,7 +423,7 @@ const parsePage = (lines) => __awaiter(this, void 0, void 0, function* () {
         if (currentPageData) {
             //パラメーターは連続した行に記述される
             let hasParams = false;
-            for (let parameter of pageParams) {
+            for (let parameter of parameters) {
                 const value = getParameter(line, parameter);
                 if (value) {
                     currentPageData[parameter] = value;
@@ -454,6 +462,9 @@ const parsePage = (lines) => __awaiter(this, void 0, void 0, function* () {
         //ページリンクの場合
         const link = getPageLink(line);
         if (link) {
+            //パラメータならスルー
+            if (isParameter(link))
+                continue;
             //リンク先にURLが記述されている？
             const _data = yield parsePage(yield getPageData(link));
             //リンク先が単体の音源でなければ無視
@@ -469,7 +480,7 @@ const parsePage = (lines) => __awaiter(this, void 0, void 0, function* () {
     return data;
 });
 const generateZone = (data) => __awaiter(this, void 0, void 0, function* () {
-    const { soundUrl, fontUrl, release, offset, noteNumber } = data;
+    const { soundUrl, fontUrl, release, offset, noteLow, noteHigh, fixedPitch } = data;
     let zone;
     if (fontUrl) {
         //TODO 既存のsoundfontと音源リストと共存するのは難しいのでペンディング
@@ -483,8 +494,9 @@ const generateZone = (data) => __awaiter(this, void 0, void 0, function* () {
         zone.release = release;
     if (offset)
         zone.offset = offset;
-    zone.keyRangeLow = noteNumber;
-    zone.keyRangeHigh = noteNumber;
+    zone.keyRangeLow = noteLow;
+    zone.keyRangeHigh = noteHigh;
+    zone.fixedPitch = fixedPitch;
     console.log("generateZone:", "Zone", zone);
     return zone;
 });
@@ -521,11 +533,6 @@ const generateFont = (data) => __awaiter(this, void 0, void 0, function* () {
         return font;
     }
     //音源リストの場合
-    //TODO ノートナンバーについて
-    //ノートナンバーが未指定の音源リスト->60番から順にアサインする
-    //1つ目の音源が70番で、2つ目が未指定なら71番に入れる
-    //もし3つ目以降が71番を指定したら構わず上書きする
-    //複雑なのでノートナンバーが指定されたことを想定して実装する
     console.log("generateFont:", "音源リスト");
     const font = { zones: [] };
     for (let page of data) {

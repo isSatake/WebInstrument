@@ -174,10 +174,10 @@ const getSoundUrl = (line: Line): string | undefined => {
 };
 
 const getParameter = (line: Line, parameter: string): number | boolean | undefined => {
-    const regExp = new RegExp(`\\[?${parameter}]?:\\d+(?:\\.\\d+)?`);
+    const regExp = new RegExp(`\\[?${parameter}]?\\d+(?:\\.\\d+)?`);
     const matched = line.text.match(regExp);
     if (matched) {
-        const str = matched[0].replace(/(\[|])/g, "").split(`${parameter}:`)[1];
+        const str = matched[0].replace(/(\[|])/g, "").split(`${parameter}`)[1];
         if (str) {
             return Number(str)
         }
@@ -185,7 +185,13 @@ const getParameter = (line: Line, parameter: string): number | boolean | undefin
     return undefined
 };
 
-const pageParams = ["release", "offset", "track", "noteNumber"];
+const parameters = ["release", "offset", "track", "noteLow", "noteHigh", "fixedPitch"];
+const isParameter = (str: string): boolean => {
+    for(let parameter of parameters){
+        if(str === parameter) return true;
+    }
+    return false;
+};
 
 //音源ページでなければ空配列を返す
 const parsePage = async (lines: Line[]): Promise<PageData[]> => {
@@ -207,7 +213,7 @@ const parsePage = async (lines: Line[]): Promise<PageData[]> => {
         if (currentPageData) {
             //パラメーターは連続した行に記述される
             let hasParams = false;
-            for (let parameter of pageParams) {
+            for (let parameter of parameters) {
                 const value = getParameter(line, parameter);
                 if (value) {
                     currentPageData[parameter] = value;
@@ -247,6 +253,8 @@ const parsePage = async (lines: Line[]): Promise<PageData[]> => {
         const link = getPageLink(line);
 
         if (link) {
+            //パラメータならスルー
+            if(isParameter(link)) continue;
             //リンク先にURLが記述されている？
             const _data: PageData[] = await parsePage(await getPageData(link));
             //リンク先が単体の音源でなければ無視
@@ -262,7 +270,7 @@ const parsePage = async (lines: Line[]): Promise<PageData[]> => {
 };
 
 const generateZone = async (data: PageData): Promise<Zone> => {
-    const {soundUrl, fontUrl, release, offset, noteNumber} = data;
+    const {soundUrl, fontUrl, release, offset, noteLow, noteHigh, fixedPitch} = data;
     let zone: Zone;
     if (fontUrl) {
         //TODO 既存のsoundfontと音源リストと共存するのは難しいのでペンディング
@@ -273,8 +281,9 @@ const generateZone = async (data: PageData): Promise<Zone> => {
     }
     if (release) zone.release = release;
     if (offset) zone.offset = offset;
-    zone.keyRangeLow = noteNumber;
-    zone.keyRangeHigh = noteNumber;
+    zone.keyRangeLow = noteLow;
+    zone.keyRangeHigh = noteHigh;
+    zone.fixedPitch = fixedPitch;
     console.log("generateZone:", "Zone", zone);
     return zone;
 };
@@ -313,12 +322,6 @@ const generateFont = async (data: PageData[]): Promise<Font> => {
     }
 
     //音源リストの場合
-    //TODO ノートナンバーについて
-    //ノートナンバーが未指定の音源リスト->60番から順にアサインする
-    //1つ目の音源が70番で、2つ目が未指定なら71番に入れる
-    //もし3つ目以降が71番を指定したら構わず上書きする
-    //複雑なのでノートナンバーが指定されたことを想定して実装する
-
     console.log("generateFont:", "音源リスト");
     const font: Font = {zones: []};
     for (let page of data) {

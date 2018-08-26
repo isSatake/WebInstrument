@@ -21,6 +21,7 @@ export class WebAudioFontPlayer {
         }
 
         const baseDetune = zone.originalPitch - 100.0 * zone.coarseTune - zone.fineTune;
+        pitch = zone.fixedPitch || pitch;
         const playbackRate = Math.pow(2, (100.0 * pitch - baseDetune) / 1200.0);
         const sampleRatio = zone.sampleRate / audioContext.sampleRate;
         let startWhen = when;

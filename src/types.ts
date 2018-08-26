@@ -22,6 +22,7 @@ export type Zone = {
     sustain?: number,
     offset?: number,
     release?: number,
+    fixedPitch?: number,
     file?: string,
     sample?: any,
     buffer?: any
@@ -37,11 +38,10 @@ export type PageData = {
     fontUrl?: string,
     release?: number,
     offset?: number,
-    isFixedPitch?: boolean,      //ピッチを固定するかどうか(デフォルトfalse)
-    noteNumber?: number          //音源を鳴らすノートナンバー(デフォルト0-127)
+    fixedPitch?: number,      //ピッチを固定する場合のノートナンバー
+    noteLow?: number,            //音源を鳴らすノートナンバー(デフォルト0-127)
+    noteHigh?: number
     //pitchOffset?: number       //入力されたノートナンバーに足す数値(デフォルト0)
-    //noteLow?: number,
-    //noteHigh?: number
 }
 
 export type Note = {
